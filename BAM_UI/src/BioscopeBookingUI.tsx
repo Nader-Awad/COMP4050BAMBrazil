@@ -20,9 +20,6 @@ import {
   Tooltip,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts";
 
 const BIOSCOPES = [
@@ -77,7 +74,7 @@ type Booking = {
 
 export default function BioscopeBookingUI() {
   const [role, setRole] = useState<"student" | "teacher" | "admin">("student");
-  const [user, setUser] = useState({ id: "u-stu-01", name: "Alex Student", role: "student" });
+  const [user] = useState({ id: "u-stu-01", name: "Alex Student", role: "student" });
   const [selectedDate, setSelectedDate] = useState<string>(toISODate(new Date()));
   const [selectedBioscope, setSelectedBioscope] = useState<string>(BIOSCOPES[0].id);
 
@@ -292,7 +289,7 @@ export default function BioscopeBookingUI() {
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="student" value={role} onValueChange={(v: "student" | "teacher" | "admin") => setRole(v)} className="space-y-6">
+        <Tabs defaultValue="student" value={role} onValueChange={(v: string) => setRole(v as "student" | "teacher" | "admin")} className="space-y-6">
           <TabsList className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-2xl">
             <TabsTrigger value="student" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Student</TabsTrigger>
             <TabsTrigger value="teacher" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Teacher</TabsTrigger>
@@ -310,18 +307,21 @@ export default function BioscopeBookingUI() {
                     <div className="p-6 rounded-xl bg-amber-50 text-amber-700 flex items-center gap-3"><AlertTriangle className="w-5 h-5" /> No open slots for this date/bioscope.</div>
                   ) : (
                     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                      {openSlots.map((s) => (
-                        <motion.button
-                          key={`${s.start}-${s.end}`}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => setDraft((d) => ({ ...d, slot: `${s.start}-${s.end}` }))}
-                          className={`text-left rounded-2xl border p-3 shadow-sm transition ${draft.slot === `${s.start}-${s.end}` ? "border-slate-900" : "border-slate-200"}`}
-                        >
-                          <div className="text-sm font-medium">{fmtTime(s.start)} – {fmtTime(s.end)}</div>
-                          <div className="text-xs text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {SLOT_MINUTES} min</div>
-                        </motion.button>
-                      ))}
+                      {openSlots.map((s) => {
+                        const slotKey = `${s.start}-${s.end}`;
+                        return (
+                          <motion.button
+                            key={slotKey}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setDraft((d) => ({ ...d, slot: slotKey }))}
+                            className={`text-left rounded-2xl border p-3 shadow-sm transition ${draft.slot === slotKey ? "border-slate-900" : "border-slate-200"}`}
+                          >
+                            <div className="text-sm font-medium">{fmtTime(s.start)} – {fmtTime(s.end)}</div>
+                            <div className="text-xs text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {SLOT_MINUTES} min</div>
+                          </motion.button>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -404,19 +404,35 @@ export default function BioscopeBookingUI() {
                   <div className="p-6 rounded-xl bg-slate-50 text-slate-600">You haven't requested any bookings yet.</div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {myBookings.sort((a, b) => a.date.localeCompare(b.date) || a.slotStart - b.slotStart).map((b) => (
-                      <div key={b.id} className="rounded-2xl border p-3 bg-white shadow-sm">
-                        <div className="text-sm font-medium">{b.date} · {fmtTime(b.slotStart)}–{fmtTime(b.slotEnd)}</div>
-                        <div className="text-slate-700">{b.title}</div>
-                        <div className="text-xs text-slate-500">{BIOSCOPES.find(x => x.id === b.bioscopeId)?.name}</div>
-                        <div className="mt-2"><Badge variant={b.status === "approved" ? "default" : b.status === "pending" ? "secondary" : "destructive"}>{b.status}</Badge></div>
-                        {b.status !== "approved" && (
-                          <div className="mt-2 flex gap-2">
-                            <Button variant="outline" className="text-xs" onClick={() => removeBooking(b.id)}>Cancel</Button>
+                    {(() => {
+                      const sortedMyBookings = [...myBookings].sort(
+                        (a: Booking, b: Booking) =>
+                          a.date.localeCompare(b.date) || a.slotStart - b.slotStart
+                      );
+                      return sortedMyBookings.map((b) => {
+                        let badgeVariant: "default" | "secondary" | "destructive";
+                        if (b.status === "approved") {
+                          badgeVariant = "default";
+                        } else if (b.status === "pending") {
+                          badgeVariant = "secondary";
+                        } else {
+                          badgeVariant = "destructive";
+                        }
+                        return (
+                          <div key={b.id} className="rounded-2xl border p-3 bg-white shadow-sm">
+                            <div className="text-sm font-medium">{b.date} · {fmtTime(b.slotStart)}–{fmtTime(b.slotEnd)}</div>
+                            <div className="text-slate-700">{b.title}</div>
+                            <div className="text-xs text-slate-500">{BIOSCOPES.find(x => x.id === b.bioscopeId)?.name}</div>
+                            <div className="mt-2"><Badge variant={badgeVariant}>{b.status}</Badge></div>
+                            {b.status !== "approved" && (
+                              <div className="mt-2 flex gap-2">
+                                <Button variant="outline" className="text-xs" onClick={() => removeBooking(b.id)}>Cancel</Button>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </CardContent>
@@ -477,8 +493,16 @@ export default function BioscopeBookingUI() {
                   <div className="space-y-2">
                     {slotsForDay.map((s) => {
                       const match = dayBookings.find((b) => b.slotStart === s.start);
+                      let slotClass = "flex items-center justify-between rounded-xl border p-2 text-sm ";
+                      if (match) {
+                        slotClass += match.status === "approved"
+                          ? "border-emerald-300 bg-emerald-50"
+                          : "border-amber-300 bg-amber-50";
+                      } else {
+                        slotClass += "border-slate-200 bg-white";
+                      }
                       return (
-                        <div key={s.start} className={`flex items-center justify-between rounded-xl border p-2 text-sm ${match ? (match.status === "approved" ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50") : "border-slate-200 bg-white"}`}>
+                        <div key={s.start} className={slotClass}>
                           <div className="font-medium">{fmtTime(s.start)} – {fmtTime(s.end)}</div>
                           <div className="text-slate-600">
                             {match ? (
