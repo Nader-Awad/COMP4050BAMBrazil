@@ -22,6 +22,12 @@ import {
   Bar,
 } from "recharts";
 
+import Header from "./components/layout/Header";
+import BookingCalendar from "./components/booking/BookingCalendar";
+import BookingForm from "./components/booking/BookingForm";
+import BookingList from "./components/booking/BookingList";
+import AnalyticsDashboard from "./components/dashboard/AnalyticsDashboard";
+
 const BIOSCOPES = [
   { id: "bio-1", name: "Bioscope A" },
   { id: "bio-2", name: "Bioscope B" },
@@ -224,35 +230,7 @@ export default function BioscopeBookingUI() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-              <div className="p-3 rounded-2xl bg-slate-900 text-white shadow-lg"><Microscope className="w-6 h-6" /></div>
-            </motion.div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Bioscope Booking</h1>
-              <p className="text-slate-500 text-sm">Reserve lab bioscopes, avoid conflicts, and keep things fair.</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Select value={role} onValueChange={(v: "student" | "teacher" | "admin") => setRole(v)}>
-              <SelectTrigger className="w-[165px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="student">Student view</SelectItem>
-                <SelectItem value="teacher">Teacher view</SelectItem>
-                <SelectItem value="admin">Admin view</SelectItem>
-              </SelectContent>
-            </Select>
-            <Separator orientation="vertical" className="h-8" />
-            <div className="hidden md:flex items-center gap-2 text-sm text-slate-500">
-              <Users className="w-4 h-4" />
-              <span>{user.name}</span>
-            </div>
-          </div>
-        </header>
+        <Header role={role} setRole={setRole as any} user={user} />
 
         <Card className="border-0 shadow-sm">
           <CardContent className="p-4 md:p-6">
@@ -298,73 +276,21 @@ export default function BioscopeBookingUI() {
 
           <TabsContent value="student" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card className="lg:col-span-2 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base"><CalendarClock className="w-4 h-4" /> Open slots</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {openSlots.length === 0 ? (
-                    <div className="p-6 rounded-xl bg-amber-50 text-amber-700 flex items-center gap-3"><AlertTriangle className="w-5 h-5" /> No open slots for this date/bioscope.</div>
-                  ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                      {openSlots.map((s) => {
-                        const slotKey = `${s.start}-${s.end}`;
-                        return (
-                          <motion.button
-                            key={slotKey}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setDraft((d) => ({ ...d, slot: slotKey }))}
-                            className={`text-left rounded-2xl border p-3 shadow-sm transition ${draft.slot === slotKey ? "border-slate-900" : "border-slate-200"}`}
-                          >
-                            <div className="text-sm font-medium">{fmtTime(s.start)} – {fmtTime(s.end)}</div>
-                            <div className="text-xs text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {SLOT_MINUTES} min</div>
-                          </motion.button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base"><Plus className="w-4 h-4" /> New booking</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <Label>Title</Label>
-                    <Input value={draft.title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, title: e.target.value }))} placeholder="e.g. Yr11 Lab: Enzyme Activity" />
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl bg-slate-50 p-2">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-slate-600" />
-                      <span className="text-sm">Group booking</span>
-                    </div>
-                    <Switch checked={isGroup} onCheckedChange={setIsGroup} />
-                  </div>
-                  {isGroup && (
-                    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <Label>Group / Team name</Label>
-                        <Input value={draft.groupName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, groupName: e.target.value }))} placeholder="e.g. Team Enzyme" />
-                      </div>
-                      <div>
-                        <Label>Attendees</Label>
-                        <Input type="number" min={1} value={draft.attendees} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, attendees: Number(e.target.value) }))} />
-                      </div>
-                    </motion.div>
-                  )}
-                  <div>
-                    <Label>Selected slot</Label>
-                    <div className="mt-1 rounded-xl border p-3 text-sm text-slate-700 bg-white">
-                      {draft.slot ? (() => { const [a, b] = draft.slot.split("-").map(Number); return `${fmtTime(a)} – ${fmtTime(b)}`; })() : "Pick a slot from the left"}
-                    </div>
-                  </div>
-                  <Button className="w-full" onClick={submitBooking} disabled={!draft.title || !draft.slot}>Request booking</Button>
-                  <p className="text-xs text-slate-500">Requests go to teachers for approval to ensure fair use.</p>
-                </CardContent>
-              </Card>
+              <BookingCalendar
+                openSlots={openSlots}
+                slotMinutes={SLOT_MINUTES}
+                selectedSlot={draft.slot}
+                onSelectSlot={(slotKey) => setDraft((d) => ({ ...d, slot: slotKey }))}
+                fmtTime={fmtTime}
+              />
+              <BookingForm
+                draft={draft as any}
+                setDraft={setDraft as any}
+                isGroup={isGroup}
+                setIsGroup={setIsGroup as any}
+                onSubmit={submitBooking}
+                fmtTime={fmtTime}
+              />
             </div>
 
             <Card className="shadow-sm">
@@ -397,46 +323,13 @@ export default function BioscopeBookingUI() {
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2"><CardTitle className="text-base">My requests</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {myBookings.length === 0 ? (
-                  <div className="p-6 rounded-xl bg-slate-50 text-slate-600">You haven't requested any bookings yet.</div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {(() => {
-                      const sortedMyBookings = [...myBookings].sort(
-                        (a: Booking, b: Booking) =>
-                          a.date.localeCompare(b.date) || a.slotStart - b.slotStart
-                      );
-                      return sortedMyBookings.map((b) => {
-                        let badgeVariant: "default" | "secondary" | "destructive";
-                        if (b.status === "approved") {
-                          badgeVariant = "default";
-                        } else if (b.status === "pending") {
-                          badgeVariant = "secondary";
-                        } else {
-                          badgeVariant = "destructive";
-                        }
-                        return (
-                          <div key={b.id} className="rounded-2xl border p-3 bg-white shadow-sm">
-                            <div className="text-sm font-medium">{b.date} · {fmtTime(b.slotStart)}–{fmtTime(b.slotEnd)}</div>
-                            <div className="text-slate-700">{b.title}</div>
-                            <div className="text-xs text-slate-500">{BIOSCOPES.find(x => x.id === b.bioscopeId)?.name}</div>
-                            <div className="mt-2"><Badge variant={badgeVariant}>{b.status}</Badge></div>
-                            {b.status !== "approved" && (
-                              <div className="mt-2 flex gap-2">
-                                <Button variant="outline" className="text-xs" onClick={() => removeBooking(b.id)}>Cancel</Button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <BookingList
+              title="My requests"
+              bookings={[...myBookings].sort((a, b) => a.date.localeCompare(b.date) || a.slotStart - b.slotStart)}
+              bioscopes={BIOSCOPES}
+              onCancel={removeBooking}
+              fmtTime={fmtTime}
+            />
           </TabsContent>
 
           <TabsContent value="teacher" className="space-y-6">
@@ -521,77 +414,7 @@ export default function BioscopeBookingUI() {
           </TabsContent>
 
           <TabsContent value="admin" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card className="lg:col-span-2 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base"><LineChart className="w-4 h-4" /> Utilization by day</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={analytics.daySeries} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis unit="%" domain={[0, 100]} />
-                      <Tooltip />
-                      <Area type="monotone" dataKey="utilization" stroke="#8884d8" fill="#8884d8" fillOpacity={0.3} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="w-4 h-4" /> Demand by hour</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analytics.hourSeries}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="hour" />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip />
-                      <Bar dataKey="bookings" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Top requesters</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analytics.userSeries}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip />
-                      <Bar dataKey="count" fill="#8884d8" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card className="lg:col-span-2 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Utilization by bioscope</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analytics.bioscopeSeries}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis unit="%" domain={[0, 100]} />
-                      <Tooltip />
-                      <Bar dataKey="utilization" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
+            <AnalyticsDashboard analytics={analytics} />
           </TabsContent>
         </Tabs>
 
