@@ -1,19 +1,7 @@
+// Local in-memory booking store with helpers to add/update/remove and a small
+// derived index (byDate). Keeps business logic out of components.
 import { useMemo, useState } from "react";
-
-export type Booking = {
-  id: string;
-  bioscopeId: string;
-  date: string;
-  slotStart: number;
-  slotEnd: number;
-  title: string;
-  groupName?: string;
-  attendees?: number;
-  requesterId: string;
-  requesterName: string;
-  status: "pending" | "approved" | "rejected";
-  createdAt: string;
-};
+import type { Booking } from "@types";
 
 export function useBookings(initial: Booking[] = []) {
   const [bookings, setBookings] = useState<Booking[]>(initial);
@@ -38,4 +26,3 @@ export function useBookings(initial: Booking[] = []) {
 
   return { bookings, setBookings, byDate, add, updateStatus, remove };
 }
-

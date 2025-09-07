@@ -1,15 +1,13 @@
-import React, { createContext, useContext } from "react";
-
-type AppContextValue = Record<string, unknown>;
-const AppContext = createContext<AppContextValue | null>(null);
+/**
+ * AppProvider component only.
+ *
+ * Thin provider around a generic AppContext for app-level misc state. The
+ * context object and consumer hook live in `@context/app-context` to keep this
+ * file exporting a single React component (plays nicely with Fast Refresh).
+ */
+import React from "react";
+import { AppContext, type AppContextValue } from "@context/app-context";
 
 export function AppProvider({ value = {}, children }: { value?: AppContextValue; children: React.ReactNode }) {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
-
-export function useAppContext<T extends AppContextValue = AppContextValue>() {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useAppContext must be used within AppProvider");
-  return ctx as T;
-}
-

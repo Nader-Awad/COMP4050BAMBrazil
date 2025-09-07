@@ -1,5 +1,7 @@
+// Admin view: aggregate analytics widgets (day utilization, demand by hour,
+// top requesters, utilization by bioscope) using recharts primitives.
 import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@components/ui/card";
 import { LineChart as LineChartIcon, BarChart3 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -97,4 +99,3 @@ export default function AnalyticsDashboard({ analytics }: { analytics: Analytics
     </>
   );
 }
-

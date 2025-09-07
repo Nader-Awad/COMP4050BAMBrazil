@@ -1,18 +1,19 @@
+// Form for creating a booking request, including optional group details and
+// a readout of the selected slot.
 import React from "react";
+import type { BookingDraft } from "@types";
 import { Plus } from "lucide-react";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
-import { Switch } from "../../components/ui/switch";
-
-type Draft = { title: string; groupName: string; attendees: number | string; slot: string };
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Switch } from "../ui/switch";
 
 type BookingFormProps = {
-  draft: Draft;
-  setDraft: React.Dispatch<React.SetStateAction<Draft>>;
+  draft: BookingDraft;
+  setDraft: React.Dispatch<React.SetStateAction<BookingDraft>>;
   isGroup: boolean;
-  setIsGroup: (v: boolean) => void;
+  setIsGroup: React.Dispatch<React.SetStateAction<boolean>>;
   onSubmit: () => void;
   fmtTime: (minutesFromMidnight: number) => string;
 };
@@ -40,7 +41,14 @@ export default function BookingForm({ draft, setDraft, isGroup, setIsGroup, onSu
             </div>
             <div>
               <Label>Attendees</Label>
-              <Input type="number" min={1} value={draft.attendees} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, attendees: e.target.value }))} />
+              <Input
+                type="number"
+                min={1}
+                value={draft.attendees}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setDraft((d) => ({ ...d, attendees: Math.max(1, Number(e.target.value || 1)) }))
+                }
+              />
             </div>
           </div>
         )}
@@ -56,4 +64,3 @@ export default function BookingForm({ draft, setDraft, isGroup, setIsGroup, onSu
     </Card>
   );
 }
-

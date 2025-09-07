@@ -1,6 +1,7 @@
+// Holds available bioscopes and the current selection. Keeps microscope
+// concerns isolated from view components and ready for backend wiring.
 import { useState } from "react";
-
-export type Bioscope = { id: string; name: string };
+import type { Bioscope } from "@types";
 
 export function useMicroscope(initialList: Bioscope[] = [
   { id: "bio-1", name: "Bioscope A" },
@@ -11,4 +12,3 @@ export function useMicroscope(initialList: Bioscope[] = [
   const [selectedBioscope, setSelectedBioscope] = useState<string>(initialList[0]?.id ?? "");
   return { bioscopes, selectedBioscope, setSelectedBioscope };
 }
-

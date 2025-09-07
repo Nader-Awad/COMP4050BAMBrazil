@@ -1,17 +1,18 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Microscope, Users } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Separator } from "../../components/ui/separator";
-
-type Role = "student" | "teacher" | "admin";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@components/ui/select";
+import { Separator } from "@components/ui/separator";
+import type { Role } from "@types";
 
 type HeaderProps = {
   role: Role;
-  setRole: (role: Role) => void;
+  setRole: React.Dispatch<React.SetStateAction<Role>>;
   user: { name: string };
 };
 
+// App header with role switcher and current user display. Stateless; delegates
+// role changes upstream via the provided setter.
 export default function Header({ role, setRole, user }: HeaderProps) {
   return (
     <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -47,4 +48,3 @@ export default function Header({ role, setRole, user }: HeaderProps) {
     </header>
   );
 }
-

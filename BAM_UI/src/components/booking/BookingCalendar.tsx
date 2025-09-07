@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { CalendarClock, Clock } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@components/ui/card";
 
 type Slot = { start: number; end: number };
 
@@ -13,6 +13,7 @@ type BookingCalendarProps = {
   fmtTime: (minutesFromMidnight: number) => string;
 };
 
+// Grid of open slots for a day/bioscope with simple selection behavior.
 export default function BookingCalendar({ openSlots, slotMinutes, selectedSlot, onSelectSlot, fmtTime }: BookingCalendarProps) {
   return (
     <Card className="lg:col-span-2 shadow-sm">
@@ -51,4 +52,3 @@ export default function BookingCalendar({ openSlots, slotMinutes, selectedSlot, 
     </Card>
   );
 }
-

@@ -1,19 +1,8 @@
 import React from "react";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { Badge } from "../../components/ui/badge";
-
-type Booking = {
-  id: string;
-  bioscopeId: string;
-  date: string;
-  slotStart: number;
-  slotEnd: number;
-  title: string;
-  status: "pending" | "approved" | "rejected";
-};
-
-type Bioscope = { id: string; name: string };
+import type { Booking, Bioscope } from "@types";
+import { Button } from "@components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@components/ui/card";
+import { Badge } from "@components/ui/badge";
 
 type BookingListProps = {
   title?: string;
@@ -60,4 +49,3 @@ export default function BookingList({ title = "My requests", bookings, bioscopes
     </Card>
   );
 }
-
