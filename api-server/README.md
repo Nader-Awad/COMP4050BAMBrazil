@@ -1,22 +1,55 @@
 # BAM API Server
 
-Rust backend API server for the Bioscope Booking and Management system.
+Rust backend API server for the Bioscope Booking and Management (BAM) system.
 
 ## Architecture
 
 This API server acts as the central backend for the BAM system, handling:
 
-- **Authentication**: JWT-based user authentication and authorization
-- **Booking Management**: CRUD operations for microscope bookings
+- **Authentication**: JWT-based user authentication and authorization with role-based access control
+- **Booking Management**: CRUD operations for microscope bookings with approval workflows
 - **Image Management**: Storage and retrieval of microscope images with AI metadata
-- **Microscope Control**: Proxy commands to microscope hardware via IA system
+- **Microscope Control**: Proxy commands to microscope hardware via IA system integration
 - **Session Management**: Tracking active microscope usage sessions
+- **OpenAPI Documentation**: Auto-generated API documentation with Swagger UI
+
+## Technology Stack
+
+### Core Framework
+- **Axum 0.8**: Modern async web framework
+- **Tokio**: Async runtime with full feature set
+- **Tower**: Service middleware and utilities
+- **Hyper**: HTTP implementation
+
+### Database & ORM
+- **PostgreSQL**: Primary database
+- **SQLx 0.8**: Async database driver with compile-time query checking
+- **Sea-ORM 1.1**: Modern ORM with migration support
+
+### Authentication & Security
+- **JWT**: JSON Web Token authentication
+- **bcrypt**: Password hashing
+- **UUID v4**: Secure identifier generation
+
+### External Integration
+- **Reqwest**: HTTP client for IA system communication
+- **Multipart**: File upload handling
+
+### Documentation
+- **utoipa**: OpenAPI 3.0 specification generation
+- **utoipa-swagger-ui**: Interactive API documentation
+- **utoipa-axum**: Axum integration for OpenAPI
+
+### Development & Observability
+- **tracing**: Structured logging
+- **anyhow/thiserror**: Error handling
+- **validator**: Request validation
 
 ## Key Components
 
 ### Models
 - **User**: Authentication and role management (Student/Teacher/Admin)  
-- **Booking**: Microscope reservation system from the UI
+- **Booking**: Microscope reservation system with approval workflow
 - **Session**: Active microscope usage tracking
 - **Image**: Microscope captures with AI-generated metadata
 - **MicroscopeCommand**: Control commands sent to hardware
@@ -58,25 +91,71 @@ This API server acts as the central backend for the BAM system, handling:
 ## Development Setup
 
 ### Prerequisites
-- Rust 1.70+
-- PostgreSQL database
-- IA system running on OrangePi
+- **Rust 1.70+**: Latest stable Rust toolchain will work
+- **PostgreSQL**: Database server (version 12+)
+- **IA System**: OrangePi hardware controller running IA integration code (not needed for testing)
+
+### Quick Start
+
+1. **Environment Configuration**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+2. **Database Setup**
+   ```bash
+   # Create database
+   createdb bam_db
+   
+   # Run migrations
+   cargo run --bin migrate
+   ```
+
+3. **Development Server**
+   ```bash
+   cargo run
+   ```
+   Server starts on `http://localhost:3000` by default.
+
+4. **API Documentation**
+   Visit `http://localhost:3000/swagger-ui/` for interactive API documentation.
+
+### Available Commands
+
+- `cargo run` - Start development server
+- `cargo test` - Run test suite
+- `cargo build --release` - Build optimized production binary
+- `cargo check` - Fast compile-time checks
+- `sqlx migrate run` - Apply database migrations
 
 ### Configuration
-1. Copy `.env.example` to `.env` and configure:
-   - Database connection
-   - JWT secret
-   - IA system URL
-   - File storage path
 
-### Running
-```bash
-cargo run
-```
+Edit `.env` file with your settings:
 
-### Testing
-```bash
-cargo test
+```env
+# Server
+BIND_ADDRESS=0.0.0.0:3000
+PORT=3000
+
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/bam_db
+DATABASE_MAX_CONNECTIONS=10
+
+# Authentication
+JWT_SECRET=your-super-secret-jwt-key-here
+TOKEN_EXPIRY=3600
+
+# File Storage
+FILE_STORAGE_PATH=./uploads
+MAX_FILE_SIZE=52428800
+
+# IA System Integration
+IA_BASE_URL=http://192.168.1.100:8080
+IA_TIMEOUT=30
+
+# Logging
+RUST_LOG=info
 ```
 
 ## Integration with IA System
