@@ -30,8 +30,9 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let claims = Claims {
-        user_id: Uuid::from_str("9a0c4b95-a85a-4ea3-8c6e-5184462d1ac1").unwrap(),
-        role: UserRole::Admin,
+        // user_id: Uuid::from_str("9a0c4b95-a85a-4ea3-8c6e-5184462d1ac1").unwrap(),
+        user_id: Uuid::from_str("e9b79d00-1d80-46cf-8451-50b716a55489").unwrap(),
+        role: UserRole::Student,
         session_id: Some(Uuid::new_v4()),
         exp: 1044,
         iat: 32111,

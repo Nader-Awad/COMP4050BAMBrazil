@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     response::Json,
     Extension,
 };
@@ -14,15 +15,21 @@ use crate::{
     AppError, AppState,
 };
 
+// TODO question if this is the correct design for this model
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateBookingRequest {
     #[schema(example = "bio-1")]
     pub microscope_id: String,
     #[schema(example = "2024-01-15", format = "date")]
+    // TODO see below
     pub date: String,
     #[schema(example = 540)]
+    // TODO should this be combined with the date, e.g. directly use unix epoch time instead of
+    // string typing the date
     pub slot_start: i32,
     #[schema(example = 600)]
+    // TODO should this be combined with the date, e.g. directly use unix epoch time instead of
+    // string typing the date
     pub slot_end: i32,
     #[validate(length(min = 1))]
     #[schema(example = "Cell Biology Lab")]
@@ -48,6 +55,8 @@ pub struct UpdateBookingRequest {
 pub struct BookingQuery {
     #[schema(example = "bio-1")]
     pub microscope_id: Option<String>,
+    // TODO should date be combined with the slot_start/end, e.g. directly use unix epoch time instead of
+    // string typing the date
     #[schema(example = "2024-01-15", format = "date")]
     pub date: Option<String>,
     pub status: Option<BookingStatus>,
@@ -181,7 +190,7 @@ pub async fn create_booking(
         requester_name: user.name,
         status: BookingStatus::Pending,
         approved_by: None,
-        created_at: chrono::Utc::now(),
+        created_at: chrono::Utc::now().into(),
     };
 
     // Save to database
@@ -279,22 +288,45 @@ pub async fn update_booking(
         ("bearer_auth" = [])
     ),
     responses(
-        (status = 200, description = "Booking deleted successfully", body = ApiResponse<String>),
+        (status = 204, description = "Booking deleted successfully"),
         (status = 403, description = "Insufficient permissions", body = ApiResponse<String>),
         (status = 404, description = "Booking not found", body = ApiResponse<String>),
         (status = 401, description = "Unauthorized")
     )
 )]
 pub async fn delete_booking(
-    State(_state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
-    Path(_booking_id): Path<Uuid>,
-) -> Result<Json<ApiResponse<String>>, AppError> {
-    // TODO: Implement booking deletion - this requires additional database methods
-    // For now, return an error indicating the feature is not yet implemented
-    Ok(Json(ApiResponse::error(
-        "Booking deletion not yet implemented".to_string(),
-    )))
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(booking_id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let deleted_rows = match claims.role {
+        UserRole::Teacher | UserRole::Admin => state.db.delete_booking(booking_id).await?,
+        _ => {
+            // For non-admin users, check booking ownership first
+            let booking_owner = state.db.get_booking_owner(booking_id).await?;
+
+            match booking_owner {
+                Some(owner_id) => {
+                    if owner_id != claims.user_id {
+                        return Err(AppError::Authorization(
+                            "You can only delete your own bookings".to_string(),
+                        ));
+                    }
+                    // User owns the booking, proceed with deletion
+                    state
+                        .db
+                        .delete_booking_by_owner(booking_id, Some(claims.user_id))
+                        .await?
+                }
+                None => {
+                    return Err(AppError::NotFound("Booking not found".to_string()));
+                }
+            }
+        }
+    };
+
+    tracing::info!(deleted_rows, "deleted booking with id {:?}", booking_id);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Approve booking (teacher/admin only)

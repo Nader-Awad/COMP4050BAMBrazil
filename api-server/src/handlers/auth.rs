@@ -123,7 +123,7 @@ pub async fn login(
 #[utoipa::path(
     post,
     path = "/api/auth/logout",
-    tag = "authentication",
+    tag = "auth",
     security(
         ("bearer_auth" = [])
     ),
@@ -235,8 +235,8 @@ async fn authenticate_user(email: &str, password: &str) -> Result<User, AuthErro
                     ),
                     email: email.to_string(),
                     role,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
+                    created_at: chrono::Utc::now().into(),
+                    updated_at: chrono::Utc::now().into(),
                 });
             } else {
                 return Err(AuthError::InvalidCredentials);

@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     response::Json,
     Extension,
 };
@@ -60,15 +59,41 @@ pub struct EndSessionRequest {
     )
 )]
 pub async fn list_sessions(
-    State(_state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
-    Query(_query): Query<SessionQuery>,
-) -> Result<Json<ApiResponse<String>>, AppError> {
-    // TODO: Implement session listing with proper filtering based on user roles
-    // For now, return an error indicating the feature is not yet implemented
-    Ok(Json(ApiResponse::error(
-        "Session listing not yet implemented".to_string(),
-    )))
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Query(query): Query<SessionQuery>,
+) -> Result<Json<ApiResponse<Vec<Session>>>, AppError> {
+    let limit = query.limit.unwrap_or(20).min(100);
+    let page = query.page.unwrap_or(1).max(1);
+    let offset = (page - 1) * limit;
+
+    // Role-based filtering
+    let (microscope_id, user_id) = match claims.role {
+        UserRole::Student => {
+            // Students can only see their own sessions
+            (query.microscope_id.as_deref(), Some(claims.user_id))
+        }
+        UserRole::Teacher | UserRole::Admin => {
+            // Teachers and admins can see all sessions with optional filtering
+            (query.microscope_id.as_deref(), query.user_id)
+        }
+    };
+
+    let active_only = query.active_only.unwrap_or(false);
+
+    let sessions = state
+        .db
+        .list_sessions(
+            microscope_id,
+            user_id,
+            query.status,
+            active_only,
+            limit,
+            offset,
+        )
+        .await?;
+
+    Ok(Json(ApiResponse::success(sessions)))
 }
 
 /// Create new session (start microscope usage)
@@ -104,9 +129,42 @@ pub async fn create_session(
     }
 
     // Check if user has an approved booking for this time (if booking_id provided)
-    if let Some(_booking_id) = request.booking_id {
-        // TODO: Validate booking belongs to user and is approved
-        tracing::info!("Starting session for booking: {}", _booking_id);
+    if let Some(booking_id) = request.booking_id {
+        let booking = state
+            .db
+            .get_booking_by_id(booking_id)
+            .await?
+            .ok_or(AppError::NotFound("Booking not found".to_string()))?;
+
+        // Validate booking belongs to user (unless admin/teacher)
+        match claims.role {
+            UserRole::Student => {
+                if booking.requester_id != claims.user_id {
+                    return Ok(Json(ApiResponse::error(
+                        "Cannot start session - booking does not belong to user".to_string(),
+                    )));
+                }
+            }
+            UserRole::Teacher | UserRole::Admin => {
+                // Teachers and admins can start sessions for any approved booking
+            }
+        }
+
+        // Validate booking is approved
+        if booking.status != crate::models::BookingStatus::Approved {
+            return Ok(Json(ApiResponse::error(
+                "Cannot start session - booking is not approved".to_string(),
+            )));
+        }
+
+        // Validate microscope matches
+        if booking.microscope_id != request.microscope_id {
+            return Ok(Json(ApiResponse::error(
+                "Cannot start session - microscope ID does not match booking".to_string(),
+            )));
+        }
+
+        tracing::info!("Starting session for approved booking: {}", booking_id);
     }
 
     let session = Session {
@@ -152,15 +210,30 @@ pub async fn create_session(
     )
 )]
 pub async fn get_session(
-    State(_state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
-    Path(_session_id): Path<Uuid>,
-) -> Result<Json<ApiResponse<String>>, AppError> {
-    // TODO: Implement session lookup with proper permissions checking
-    // For now, return an error indicating the feature is not yet implemented
-    Ok(Json(ApiResponse::error(
-        "Session lookup not yet implemented".to_string(),
-    )))
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Session>>, AppError> {
+    let session = state
+        .db
+        .get_session_by_id(session_id)
+        .await?
+        .ok_or(AppError::NotFound("Session not found".to_string()))?;
+
+    // Permission checking based on user role
+    match claims.role {
+        UserRole::Student => {
+            // Students can only access their own sessions
+            if session.user_id != claims.user_id {
+                return Err(AppError::Authorization("Access denied - can only view own sessions".to_string()));
+            }
+        }
+        UserRole::Teacher | UserRole::Admin => {
+            // Teachers and admins can access all sessions
+        }
+    }
+
+    Ok(Json(ApiResponse::success(session)))
 }
 
 /// End session (stop microscope usage)

@@ -20,6 +20,7 @@ use tower_http::{
 };
 use tracing::Level;
 use utoipa::OpenApi;
+use utoipa_axum::router::OpenApiRouter;
 use utoipa_swagger_ui::SwaggerUi;
 
 /// OpenAPI specification for BAM API Server
@@ -63,11 +64,7 @@ use utoipa_swagger_ui::SwaggerUi;
         handlers::microscope::auto_focus,
         handlers::microscope::start_tracking,
         handlers::microscope::stop_tracking,
-        // Auth endpoints would be added here with #[utoipa::path] annotations
-        // Booking endpoints would be added here with #[utoipa::path] annotations  
-        // Session endpoints would be added here with #[utoipa::path] annotations
-        // Image endpoints would be added here with #[utoipa::path] annotations
-        // Microscope endpoints would be added here with #[utoipa::path] annotations
+        // All new endpoints must be added here with #[utoipa::path] annotations
     ),
     components(
         schemas(
@@ -92,7 +89,7 @@ use utoipa_swagger_ui::SwaggerUi;
     ),
     tags(
         (name = "health", description = "Health check endpoints"),
-        (name = "auth", description = "Authentication and authorization"),
+        (name = "authentication", description = "Authentication and authorization"),
         (name = "bookings", description = "Booking management"),
         (name = "sessions", description = "Session tracking"),
         (name = "images", description = "Image management and serving"),
@@ -112,9 +109,8 @@ pub struct AppState {
 
 /// Create the main application router with all routes and middleware
 pub fn create_router(state: AppState) -> Router {
-    Router::new()
+    let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         // OpenAPI documentation
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         // Health check
         .route("/health", get(handlers::health_check))
         // Authentication routes
@@ -124,18 +120,21 @@ pub fn create_router(state: AppState) -> Router {
         // Booking routes (from existing UI)
         .route("/api/bookings", get(handlers::bookings::list_bookings))
         .route("/api/bookings", post(handlers::bookings::create_booking))
-        .route("/api/bookings/:id", get(handlers::bookings::get_booking))
-        .route("/api/bookings/:id", put(handlers::bookings::update_booking))
+        .route("/api/bookings/{id}", get(handlers::bookings::get_booking))
         .route(
-            "/api/bookings/:id",
+            "/api/bookings/{id}",
+            put(handlers::bookings::update_booking),
+        )
+        .route(
+            "/api/bookings/{id}",
             delete(handlers::bookings::delete_booking),
         )
         .route(
-            "/api/bookings/:id/approve",
+            "/api/bookings/{id}/approve",
             post(handlers::bookings::approve_booking),
         )
         .route(
-            "/api/bookings/:id/reject",
+            "/api/bookings/{id}/reject",
             post(handlers::bookings::reject_booking),
         )
         // Session management
@@ -145,53 +144,53 @@ pub fn create_router(state: AppState) -> Router {
             "/api/sessions/current",
             get(handlers::sessions::get_current_session),
         )
-        .route("/api/sessions/:id", get(handlers::sessions::get_session))
+        .route("/api/sessions/{id}", get(handlers::sessions::get_session))
         .route(
-            "/api/sessions/:id/end",
+            "/api/sessions/{id}/end",
             post(handlers::sessions::end_session),
         )
         // Image routes
-        .route("/api/images/:id", get(handlers::images::get_image))
+        .route("/api/images/{id}", get(handlers::images::get_image))
         .route(
-            "/api/images/:id/file",
+            "/api/images/{id}/file",
             get(handlers::images::serve_image_file),
         )
         .route("/api/images/search", get(handlers::images::search_images))
         .route(
-            "/api/sessions/:session_id/images",
+            "/api/sessions/{session_id}/images",
             get(handlers::images::get_all_images_for_session),
         )
         .route(
-            "/api/sessions/:session_id/images/latest",
+            "/api/sessions/{session_id}/images/latest",
             get(handlers::images::get_latest_image_for_session),
         )
         .route(
-            "/api/users/:user_id/images",
+            "/api/users/{user_id}/images",
             get(handlers::images::get_all_images_for_user),
         )
         // Microscope control routes (proxy to IA)
         .route(
-            "/api/microscope/:microscope_id/command",
+            "/api/microscope/{microscope_id}/command",
             post(handlers::microscope::send_command),
         )
         .route(
-            "/api/microscope/:microscope_id/status",
+            "/api/microscope/{microscope_id}/status",
             get(handlers::microscope::get_status),
         )
         .route(
-            "/api/microscope/:microscope_id/capture",
+            "/api/microscope/{microscope_id}/capture",
             post(handlers::microscope::capture_image),
         )
         .route(
-            "/api/microscope/:microscope_id/focus",
+            "/api/microscope/{microscope_id}/focus",
             post(handlers::microscope::auto_focus),
         )
         .route(
-            "/api/microscope/:microscope_id/tracking/start",
+            "/api/microscope/{microscope_id}/tracking/start",
             post(handlers::microscope::start_tracking),
         )
         .route(
-            "/api/microscope/:microscope_id/tracking/stop",
+            "/api/microscope/{microscope_id}/tracking/stop",
             post(handlers::microscope::stop_tracking),
         )
         // File serving for static content
@@ -214,4 +213,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         // Add state
         .with_state(state)
+        .split_for_parts();
+
+    router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api.clone()))
 }

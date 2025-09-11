@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -10,8 +10,8 @@ pub struct User {
     pub name: String,
     pub email: String,
     pub role: UserRole,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, sqlx::Type, ToSchema)]
@@ -58,7 +58,6 @@ pub struct Image {
     pub captured_at: DateTime<Utc>,
 }
 
-/// AI-generated metadata for images
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageMetadata {
     pub objects_detected: Vec<DetectedObject>,
@@ -84,7 +83,6 @@ pub struct BoundingBox {
     pub height: f32,
 }
 
-/// Booking model (from existing UI)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Booking {
     pub id: Uuid,
@@ -99,7 +97,7 @@ pub struct Booking {
     pub requester_name: String,
     pub status: BookingStatus,
     pub approved_by: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
+    pub created_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, sqlx::Type, ToSchema)]
@@ -138,6 +136,14 @@ pub struct ApiResponse<T> {
 }
 
 impl<T> ApiResponse<T> {
+    pub fn no_content() -> Self {
+        Self {
+            success: true,
+            data: None,
+            message: None,
+            error: None,
+        }
+    }
     pub fn success(data: T) -> Self {
         Self {
             success: true,

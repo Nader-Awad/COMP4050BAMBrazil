@@ -82,7 +82,7 @@ pub async fn get_image(
     )
 )]
 pub async fn serve_image_file(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Path(image_id): Path<Uuid>,
 ) -> Result<Response, StatusCode> {
@@ -244,7 +244,7 @@ pub async fn search_images(
 }
 
 /// Check if user can access an image based on role and ownership
-fn can_access_image(claims: &Claims, image: &Image) -> bool {
+fn can_access_image(claims: &Claims, _image: &Image) -> bool {
     match claims.role {
         UserRole::Admin | UserRole::Teacher => true, // Admin and teachers can access all images
         UserRole::Student => {
