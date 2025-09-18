@@ -1,0 +1,56 @@
+[package]
+name = "bam"
+version = "0.1.0"
+edition = "2021"
+authors = ["calleum.pecqueux"]
+
+[dependencies]
+# Web framework
+axum = "0.8"
+tower = { version = "0.5", features = ["util"]}
+tower-http = { version = "0.6", features = ["fs", "cors", "auth", "trace"] }
+tokio = { version = "1.47", features = ["full"] }
+hyper = { version = "1.7", features = ["full"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "migrate", "macros"] }
+sea-orm = { version = "1.1", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Authentication & Security
+jsonwebtoken = "9.3"
+bcrypt = "0.17"
+uuid = { version = "1.18", features = ["v4", "serde"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Configuration
+config = "0.15"
+dotenvy = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# File handling
+tokio-util = { version = "0.7", features = ["io"] }
+mime_guess = "2.0"
+
+# HTTP client for IA communication
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Validation
+validator = { version = "0.20", features = ["derive"] }
+
+# OpenAPI documentation
+utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+utoipa-axum = "0.2"
