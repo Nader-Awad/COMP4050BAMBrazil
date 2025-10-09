@@ -1,35 +1,30 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Centralized API client for the BAM Brazil UI (fetch-based).
+ * Centralized API client.
  *
  * Features:
  * - Environment-based base URL (Vite: VITE_API_URL)
  * - Type-safe methods for core endpoints (bookings, sessions, images, microscope)
  * - JWT access token injection + automatic refresh on 401
  * - Request/response interceptors (pre/post hooks)
- * - Retry with exponential backoff for network/5xx errors
  * - Loading state tracking (subscribe via onLoading / useApiLoading hook)
  * - Friendly error messages (ProblemDetails aware, JSON fallback)
  */
 
 import { useEffect, useState } from "react";
 import type { Booking } from "@/types/booking";
-import type { User } from "@/types/user";
 
 // ---------- Config ----------
 
 const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
-  `${window.location.origin}`; // default to same-origin in dev
+  `${window.location.origin}`; // goes to default
 
-// If your backend uses a different refresh path, change here:
+
 const REFRESH_ENDPOINT = "/api/auth/refresh";
 
-// Optional: where login/logout live (for clarity only)
-const LOGIN_ENDPOINT = "/api/auth/login";
-const LOGOUT_ENDPOINT = "/api/auth/logout";
 
-// ---------- Token Store (localStorage) ----------
+
+// ---------- Store Tokens (localStorage) ----------
 
 const ACCESS_TOKEN_KEY = "accessToken";
 const REFRESH_TOKEN_KEY = "refreshToken";
@@ -55,7 +50,7 @@ function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-// ---------- Loading State Emitter ----------
+// ---------- Loading State ----------
 
 type LoadingListener = (activeCount: number) => void;
 const listeners = new Set<LoadingListener>();
@@ -105,7 +100,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Turn a response body into a friendly message (ProblemDetails or JSON fallback). */
+/** Turn response body into a message. */
 async function parseErrorMessage(res: Response): Promise<{ message: string; code?: string; details?: any }> {
   const ct = res.headers.get("content-type") ?? "";
   try {
@@ -159,7 +154,7 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
   let reqInit: RequestInitExt = {
     method,
     headers,
-    credentials: "include", // in case backend also uses httpOnly cookies
+    credentials: "include", // incase backend also uses httpOnly cookies
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     ...init,
   };
@@ -167,7 +162,7 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
   // Run pre-interceptors
   for (const pre of preInterceptors) {
     const res = await pre(url, reqInit);
-    url; // no change to url in this design (could support if needed)
+    url; // no change to url in this design
     reqInit = res.init as RequestInitExt;
   }
 
@@ -215,8 +210,25 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
           // No content
           if (res.status === 204) return undefined as T;
           const ct = res.headers.get("content-type") ?? "";
-          if (ct.includes("application/json")) return (await res.json()) as T;
-          // Non-JSON (e.g. images/blob). Cast as any.
+          
+          if (ct.includes("application/json")) {
+            const parsed = await res.json();
+
+            // Auto-unwrap ApiResponse<T> shape from backend
+            if (parsed && typeof parsed === "object" && "success" in parsed) {
+              if (parsed.success) {
+                return (parsed.data ?? undefined) as T;
+              }
+              throw new ApiError(parsed.error || "Request failed", {
+                status: res.status,
+                details: parsed,
+              });
+            }
+
+            return parsed as T;
+          }
+          
+          // Non-JSON (e.g. images/blob). 
           // @ts-expect-error (caller should know the expected type)
           return await res.blob();
         }
@@ -268,12 +280,6 @@ function expBackoff(attempt: number, base: number) {
 
 /**
  * Try to refresh the access token using the refresh token.
- * Expected response shape is flexible; adapt to your backend (shown common patterns below).
- *
- * Example accepted responses:
- *  { accessToken: "new", refreshToken?: "maybe new" }
- * or
- *  { token: "newAccess" }
  */
 async function tryRefreshToken(): Promise<boolean> {
   const rt = getRefreshToken();
@@ -292,9 +298,10 @@ async function tryRefreshToken(): Promise<boolean> {
 
     if (!res.ok) return false;
 
-    const data = await res.json().catch(() => ({}));
-    const access = data.accessToken ?? data.token ?? data.access_token;
-    const refresh = data.refreshToken ?? data.refresh_token;
+    const parsed = await res.json().catch(() => ({}));
+    const payload = parsed?.data ?? parsed; // unwrap if present
+    const access  = payload.accessToken ?? payload.token ?? payload.access_token;
+    const refresh = payload.refreshToken ?? payload.refresh_token;
 
     if (access) {
       setTokens(access, refresh ?? undefined);
@@ -335,91 +342,54 @@ export const SessionsAPI = {
   get(id: string): Promise<any> {
     return request<any>(`/api/sessions/${encodeURIComponent(id)}`, "GET");
   },
-  // add anything your backend supports (start/stop/heartbeat etc.)
 };
 
-// Images
+// Define a type that matches backend Image model
+type ImageMeta = {
+  id: string;
+  // Add any other fields your backend exposes in the Image model:
+  // e.g. file_path?: string;
+  //       owner_id?: string;
+  //       created_at?: string;
+  //       microscope_id?: string;
+};
+
+// ---------- Images ----------
 export const ImagesAPI = {
-  getImage(id: string): Promise<Blob> {
-    // non-JSON response expected -> request<Blob> will return a Blob
-    return request<Blob>(`/api/images/${encodeURIComponent(id)}`, "GET");
+  getImage(id: string): Promise<ImageMeta> {
+    return request<ImageMeta>(`/api/images/${encodeURIComponent(id)}`, "GET");
   },
-  getLatestForSession(sessionId: string): Promise<Blob> {
-    return request<Blob>(`/api/sessions/${encodeURIComponent(sessionId)}/images/latest`, "GET");
+  getLatestForSession(sessionId: string): Promise<ImageMeta> {
+    return request<ImageMeta>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/images/latest`,
+      "GET"
+    );
   },
 };
 
-// Microscope control
+// ---------- Microscope ----------
 export const MicroscopeAPI = {
-  command(microscopeId: string, command: string, params?: Record<string, unknown>): Promise<any> {
+  command(
+    microscopeId: string,
+    command: string,
+    params?: Record<string, unknown>
+  ): Promise<any> {
     return request<any>(
       `/api/microscope/${encodeURIComponent(microscopeId)}/command`,
       "POST",
       { command, params }
     );
   },
-  capture(microscopeId: string): Promise<Blob> {
-    return request<Blob>(`/api/microscope/${encodeURIComponent(microscopeId)}/capture`, "POST");
+  capture(microscopeId: string): Promise<ImageMeta> {
+    return request<ImageMeta>(
+      `/api/microscope/${encodeURIComponent(microscopeId)}/capture`,
+      "POST"
+    );
   },
   status(microscopeId: string): Promise<any> {
-    return request<any>(`/api/microscope/${encodeURIComponent(microscopeId)}/status`, "GET");
+    return request<any>(
+      `/api/microscope/${encodeURIComponent(microscopeId)}/status`,
+      "GET"
+    );
   },
 };
-
-// Auth convenience helpers (optional)
-export const AuthAPI = {
-  async login(credentials: { email: string; password: string }): Promise<{ user: User; accessToken: string; refreshToken?: string }> {
-    const res = await request<any>(LOGIN_ENDPOINT, "POST", credentials);
-    // normalize tokens regardless of backend field names
-    const access = res.accessToken ?? res.token ?? res.access_token;
-    const refresh = res.refreshToken ?? res.refresh_token;
-    if (access) setTokens(access, refresh ?? undefined);
-    return res;
-  },
-  async logout(): Promise<void> {
-    try {
-      await request<void>(LOGOUT_ENDPOINT, "POST");
-    } finally {
-      clearTokens();
-    }
-  },
-  setTokens,
-  clearTokens,
-  getAccessToken,
-  getRefreshToken,
-};
-
-// ---------- Friendly error-to-toast mapping (example) ----------
-
-export function humanizeError(err: unknown): string {
-  if (err instanceof ApiError) {
-    // targeted messages for common statuses
-    if (err.status === 401) return "Your session expired. Please sign in again.";
-    if (err.status === 403) return "You don’t have permission to perform this action.";
-    if (err.status === 404) return "We couldn’t find what you were looking for.";
-    if (err.status && err.status >= 500) return "The server hit a snag. Please try again.";
-    return err.message || "Something went wrong.";
-  }
-  if (err instanceof Error) {
-    if (/network|offline|fetch/i.test(err.message)) return "Network error. Check your connection and try again.";
-    return err.message;
-  }
-  return "Unexpected error.";
-}
-
-// ---------- Example request/response interceptors (optional) ----------
-
-// Add a correlation ID header to every request
-addRequestInterceptor(async (input, init) => {
-  const hdrs = new Headers(init.headers || {});
-  hdrs.set("x-correlation-id", crypto.randomUUID());
-  return { input, init: { ...init, headers: hdrs } };
-});
-
-// Log 5xx responses (could route to Sentry)
-addResponseInterceptor(async (res) => {
-  if (res.status >= 500) {
-    // eslint-disable-next-line no-console
-    console.error("Server error", res.status, res.url);
-  }
-});
