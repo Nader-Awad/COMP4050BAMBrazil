@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./api-server
+      dockerfile: Dockerfile
+    environment:
+      BIND_ADDRESS: 0.0.0.0:3000
+      PORT: 3000
+      DATABASE_URL: postgres://postgres:postgres@db:5432/bam
+      JWT_SECRET: change-me-in-prod
+      FILE_STORAGE_PATH: /data/uploads
+      IA_BASE_URL: http://localhost:8080
+      IA_TIMEOUT: 30
+    volumes:
+      - uploads_data:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+  frontend:
+    build:
+      context: ./BAM_UI
+      dockerfile: Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bam
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  db_data:
+  uploads_data:

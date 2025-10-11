@@ -3,6 +3,7 @@ name = "bam"
 version = "0.1.0"
 edition = "2021"
 authors = ["calleum.pecqueux"]
+rust-version = "1.82"
 
 [dependencies]
 # Web framework
@@ -54,3 +55,4 @@ validator = { version = "0.20", features = ["derive"] }
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 utoipa-axum = "0.2"
+base64ct = "=1.7.1"

@@ -1,6 +1,5 @@
 // Teacher view: compact timeline for a single day/bioscope showing whether
 // each slot is open or which booking occupies it.
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@components/ui/card";
 import { Clock } from "lucide-react";
 import type { Slot, Booking } from "@types";

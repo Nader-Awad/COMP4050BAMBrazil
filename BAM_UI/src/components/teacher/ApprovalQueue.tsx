@@ -2,7 +2,6 @@
  * Teacher view: pending approvals list with conflict/fair-use hints.
  * Accepts the full bookings list to compute conflicts and requester stats.
  */
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@components/ui/card";
 import { Badge } from "@components/ui/badge";
 import { Button } from "@components/ui/button";
