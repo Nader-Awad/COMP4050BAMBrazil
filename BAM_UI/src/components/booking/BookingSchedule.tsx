@@ -1,6 +1,5 @@
 // Student view: list of bookings for the selected date/bioscope, rendered with
 // status badges and requester details.
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@components/ui/card";
 import { Badge } from "@components/ui/badge";
 import { ShieldCheck } from "lucide-react";
