@@ -43,14 +43,14 @@ export type Session = {
 }
 
 //Images
-export interface BoundingBox {
+export type BoundingBox = {
   x: number;                  
   y: number;                  
   width: number;             
   height: number;             
 }
 
-export interface DetectedObject {
+export type DetectedObject = {
   class_name: string;
   confidence: number;       
   bounding_box: BoundingBox;
@@ -63,7 +63,7 @@ export type ImageMetadata = {
   lighting_conditions: string | null;
 }
 
-export interface Image {
+export type Image = {
   id: string;                
   session_id: string;         
   filename: string;
