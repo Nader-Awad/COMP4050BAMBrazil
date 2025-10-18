@@ -225,7 +225,9 @@ pub async fn get_session(
         UserRole::Student => {
             // Students can only access their own sessions
             if session.user_id != claims.user_id {
-                return Err(AppError::Authorization("Access denied - can only view own sessions".to_string()));
+                return Err(AppError::Authorization(
+                    "Access denied - can only view own sessions".to_string(),
+                ));
             }
         }
         UserRole::Teacher | UserRole::Admin => {
