@@ -50,6 +50,39 @@ export function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
+type BookingDto = {
+  id: string;
+  microscope_id: string;
+  date: string;
+  slot_start: number;
+  slot_end: number;
+  title: string;
+  group_name: string | null;
+  attendees: number | null;
+  requester_id: string;
+  requester_name: string;
+  status: string;
+  approved_by: string | null;
+  created_at: string;
+};
+
+function toBooking(dto: BookingDto): Booking {
+  return {
+    id: dto.id,
+    bioscopeId: dto.microscope_id,
+    date: dto.date,
+    slotStart: dto.slot_start,
+    slotEnd: dto.slot_end,
+    title: dto.title,
+    groupName: dto.group_name ?? undefined,
+    attendees: dto.attendees ?? undefined,
+    requesterId: dto.requester_id,
+    requesterName: dto.requester_name,
+    status: dto.status.toLowerCase() as Booking["status"],
+    createdAt: dto.created_at,
+  };
+}
+
 // ---------- Loading State ----------
 
 type LoadingListener = (activeCount: number) => void;
@@ -154,7 +187,7 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
   let reqInit: RequestInitExt = {
     method,
     headers,
-    credentials: "include", // incase backend also uses httpOnly cookies
+    credentials: "omit",
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     ...init,
   };
@@ -317,17 +350,33 @@ async function tryRefreshToken(): Promise<boolean> {
 
 // Bookings
 export const BookingsAPI = {
-  list(): Promise<Booking[]> {
-    return request<Booking[]>("/api/bookings", "GET");
+  async list(): Promise<Booking[]> {
+    const result = await request<BookingDto[]>("/api/bookings", "GET");
+    return (result ?? []).map(toBooking);
   },
-  get(id: string): Promise<Booking> {
-    return request<Booking>(`/api/bookings/${encodeURIComponent(id)}`, "GET");
+  async get(id: string): Promise<Booking> {
+    const dto = await request<BookingDto>(`/api/bookings/${encodeURIComponent(id)}`, "GET");
+    return toBooking(dto);
   },
-  create(payload: Partial<Booking>): Promise<Booking> {
-    return request<Booking>("/api/bookings", "POST", payload);
+  async create(payload: unknown): Promise<Booking> {
+    const dto = await request<BookingDto>("/api/bookings", "POST", payload);
+    return toBooking(dto);
   },
-  update(id: string, payload: Partial<Booking>): Promise<Booking> {
-    return request<Booking>(`/api/bookings/${encodeURIComponent(id)}`, "PUT", payload);
+  async update(id: string, payload: Partial<Booking>): Promise<Booking> {
+    const body: Record<string, unknown> = {};
+    if (payload.title !== undefined) body.title = payload.title;
+    if (payload.groupName !== undefined) body.group_name = payload.groupName;
+    if (payload.attendees !== undefined) body.attendees = payload.attendees;
+    if (payload.status) {
+      const statusMap: Record<Booking["status"], string> = {
+        pending: "Pending",
+        approved: "Approved",
+        rejected: "Rejected",
+      };
+      body.status = statusMap[payload.status];
+    }
+    const dto = await request<BookingDto>(`/api/bookings/${encodeURIComponent(id)}`, "PUT", body);
+    return toBooking(dto);
   },
   remove(id: string): Promise<void> {
     return request<void>(`/api/bookings/${encodeURIComponent(id)}`, "DELETE");

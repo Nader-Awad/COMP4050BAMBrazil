@@ -9,7 +9,10 @@ services:
       BIND_ADDRESS: 0.0.0.0:3000
       PORT: 3000
       DATABASE_URL: postgres://postgres:postgres@db:5432/bam
+      DATABASE_MAX_CONNECTIONS: 10
       JWT_SECRET: change-me-in-prod
+      TOKEN_EXPIRY: 3600
+      REFRESH_TOKEN_EXPIRY: 604800
       FILE_STORAGE_PATH: /data/uploads
       IA_BASE_URL: http://localhost:8080
       IA_TIMEOUT: 30
@@ -25,6 +28,9 @@ services:
     build:
       context: ./BAM_UI
       dockerfile: Dockerfile
+      args:
+        # Use localhost so requests resolve from the user's browser outside Docker
+        VITE_API_URL: http://localhost:3000
     depends_on:
       - api
     ports:

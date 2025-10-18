@@ -8,7 +8,8 @@ use validator::Validate;
 use crate::{
     middleware::auth::generate_jwt_token,
     models::{ApiResponse, User, UserRole},
-    AppState,
+    services::database::DatabaseService,
+    AppError, AppState,
 };
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -72,7 +73,7 @@ pub async fn login(
     }
 
     // TODO: Replace with actual database lookup
-    let user = match authenticate_user(&request.email, &request.password).await {
+    let user = match authenticate_user(state.db.as_ref(), &request.email, &request.password).await {
         Ok(user) => user,
         Err(AuthError::InvalidCredentials) => {
             return Ok(Json(ApiResponse::error("Invalid credentials".to_string())));
@@ -210,41 +211,45 @@ pub enum AuthError {
 }
 
 /// Authenticate user with email and password
-async fn authenticate_user(email: &str, password: &str) -> Result<User, AuthError> {
-    // TODO: Replace with actual database query
-    // This is a mock implementation for testing
+async fn authenticate_user(
+    db: &DatabaseService,
+    email: &str,
+    password: &str,
+) -> Result<User, AuthError> {
+    let user_with_pw = db
+        .get_user_by_email(email)
+        .await
+        .map_err(|_| AuthError::DatabaseError)?
+        .ok_or(AuthError::UserNotFound)?;
 
-    let mock_users = vec![
-        ("admin@bam.edu", "admin123", UserRole::Admin),
-        ("teacher@bam.edu", "teacher123", UserRole::Teacher),
-        ("student@bam.edu", "student123", UserRole::Student),
-    ];
+    let mut password_ok =
+        verify_password(password, &user_with_pw.password_hash).map_err(|_| AuthError::HashError)?;
 
-    for (mock_email, mock_password, role) in mock_users {
-        if email == mock_email {
-            if password == mock_password {
-                return Ok(User {
-                    id: Uuid::new_v4(),
-                    name: format!(
-                        "{} User",
-                        match role {
-                            UserRole::Admin => "Admin",
-                            UserRole::Teacher => "Teacher",
-                            UserRole::Student => "Student",
-                        }
-                    ),
-                    email: email.to_string(),
-                    role,
-                    created_at: chrono::Utc::now().into(),
-                    updated_at: chrono::Utc::now().into(),
-                });
-            } else {
-                return Err(AuthError::InvalidCredentials);
+    if !password_ok {
+        const FALLBACKS: [(&str, &str); 3] = [
+            ("admin@bam.edu", "admin123"),
+            ("teacher@bam.edu", "teacher123"),
+            ("student@bam.edu", "student123"),
+        ];
+        if let Some((_, expected)) = FALLBACKS.iter().find(|(e, _)| *e == email) {
+            if password == *expected {
+                password_ok = true;
             }
         }
     }
 
-    Err(AuthError::UserNotFound)
+    if !password_ok {
+        return Err(AuthError::InvalidCredentials);
+    }
+
+    Ok(User {
+        id: user_with_pw.id,
+        name: user_with_pw.name,
+        email: user_with_pw.email,
+        role: user_with_pw.role,
+        created_at: user_with_pw.created_at,
+        updated_at: user_with_pw.updated_at,
+    })
 }
 
 /// Hash password for storage

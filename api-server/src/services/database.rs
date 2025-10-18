@@ -525,7 +525,8 @@ impl DatabaseService {
                    status, started_at, ended_at, notes
             FROM sessions 
             WHERE 1=1
-        "#.to_string();
+        "#
+        .to_string();
 
         let mut conditions = Vec::new();
         let mut param_count = 0;
@@ -596,14 +597,20 @@ impl DatabaseService {
                     booking_id: row.get("booking_id"),
                     microscope_id: row.get("microscope_id"),
                     status: session_status,
-                    started_at: DateTime::from_timestamp(row.get::<time::OffsetDateTime, _>("started_at").unix_timestamp(), 0)
-                        .unwrap()
-                        .with_timezone(&Utc),
-                    ended_at: row.get::<Option<time::OffsetDateTime>, _>("ended_at").map(|dt| {
-                        DateTime::from_timestamp(dt.unix_timestamp(), 0)
-                            .unwrap()
-                            .with_timezone(&Utc)
-                    }),
+                    started_at: DateTime::from_timestamp(
+                        row.get::<time::OffsetDateTime, _>("started_at")
+                            .unix_timestamp(),
+                        0,
+                    )
+                    .unwrap()
+                    .with_timezone(&Utc),
+                    ended_at: row
+                        .get::<Option<time::OffsetDateTime>, _>("ended_at")
+                        .map(|dt| {
+                            DateTime::from_timestamp(dt.unix_timestamp(), 0)
+                                .unwrap()
+                                .with_timezone(&Utc)
+                        }),
                     notes: row.get("notes"),
                 }
             })
@@ -896,7 +903,7 @@ impl DatabaseService {
         )
         .fetch_optional(&self.pool)
         .await?;
-        
+
         Ok(result.map(|row| row.requester_id))
     }
 
