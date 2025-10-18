@@ -15,7 +15,7 @@ import type { Booking } from "@/types/booking";
 
 // ---------- Config ----------
 
-const API_BASE =
+export const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
   `${window.location.origin}`; // goes to default
 
@@ -26,8 +26,8 @@ const REFRESH_ENDPOINT = "/api/auth/refresh";
 
 // ---------- Store Tokens (localStorage) ----------
 
-const ACCESS_TOKEN_KEY = "accessToken";
-const REFRESH_TOKEN_KEY = "refreshToken";
+export const ACCESS_TOKEN_KEY = "auth_access";
+export const REFRESH_TOKEN_KEY = "auth_refresh";
 
 function getAccessToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -35,7 +35,7 @@ function getAccessToken() {
 function getRefreshToken() {
   return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
-function setTokens(access?: string | null, refresh?: string | null) {
+export function setTokens(access?: string | null, refresh?: string | null) {
   if (access !== undefined) {
     if (access) localStorage.setItem(ACCESS_TOKEN_KEY, access);
     else localStorage.removeItem(ACCESS_TOKEN_KEY);
@@ -45,7 +45,7 @@ function setTokens(access?: string | null, refresh?: string | null) {
     else localStorage.removeItem(REFRESH_TOKEN_KEY);
   }
 }
-function clearTokens() {
+export function clearTokens() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
