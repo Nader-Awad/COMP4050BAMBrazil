@@ -18,6 +18,9 @@ import DayAtAGlance from "@components/teacher/DayAtAGlance";
 import AnalyticsDashboard from "@components/dashboard/AnalyticsDashboard";
 import { ApiError, BookingsAPI } from "@/services/apiClient";
 
+import { useAuthContext } from "./context/auth-context";
+import LogoutButton from "./LoginOut/LogoutButton";
+
 const BIOSCOPES: Bioscope[] = [
   { id: "bio-1", name: "Bioscope A" },
   { id: "bio-2", name: "Bioscope B" },
@@ -56,8 +59,9 @@ const DAY_SLOTS: number[] = makeDaySlots();
 // Types are declared in @types
 
 export default function BioscopeBookingUI() {
-  const [role, setRole] = useState<Role>("student");
-  const [user] = useState({ id: "u-stu-01", name: "Alex Student", role: "student" });
+  const { user } = useAuthContext();
+  const role = user!.role as Role; // RequireAuth guarantees user
+
   const [selectedDate, setSelectedDate] = useState<string>(toISODate(new Date()));
   const [selectedBioscope, setSelectedBioscope] = useState<string>(BIOSCOPES[0].id);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -79,11 +83,12 @@ export default function BioscopeBookingUI() {
 
   const occupied = useMemo(() => new Set(dayBookings.map(occupiedKey)), [dayBookings]);
 
-  const openSlots = useMemo(() =>
-    slotsForDay.filter((s) => !Array.from(occupied).includes(`${s.start}-${s.end}`)),
-    [slotsForDay, occupied]);
+  const openSlots = useMemo(
+    () => slotsForDay.filter((s) => !Array.from(occupied).includes(`${s.start}-${s.end}`)),
+    [slotsForDay, occupied]
+  );
 
-  const myBookings = useMemo(() => bookings.filter((b) => b.requesterId === user.id), [bookings, user.id]);
+  const myBookings = useMemo(() => bookings.filter((b) => b.requesterId === user!.id), [bookings, user]);
 
   const [draft, setDraft] = useState<BookingDraft>({ title: "", groupName: "", attendees: 1, slot: "" });
   const [isGroup, setIsGroup] = useState(false);
@@ -114,7 +119,10 @@ export default function BioscopeBookingUI() {
     const end = parseInt(endStr, 10);
 
     const conflict = bookings.some(
-      (b) => b.bioscopeId === selectedBioscope && b.date === selectedDate && !(end <= b.slotStart || start >= b.slotEnd)
+      (b) =>
+        b.bioscopeId === selectedBioscope &&
+        b.date === selectedDate &&
+        !(end <= b.slotStart || start >= b.slotEnd)
     );
     if (conflict) {
       alert("This time overlaps an existing booking.");
@@ -129,8 +137,8 @@ export default function BioscopeBookingUI() {
       title: draft.title.trim(),
       groupName: isGroup ? draft.groupName.trim() || undefined : undefined,
       attendees: isGroup ? Math.max(1, Number(draft.attendees) || 1) : undefined,
-      requesterId: user.id,
-      requesterName: user.name,
+      requesterId: user!.id,
+      requesterName: user!.name,
       status: "pending",
     };
     try {
@@ -179,7 +187,8 @@ export default function BioscopeBookingUI() {
       const hour = Math.floor(b.slotStart / 60);
       byHour[hour] = (byHour[hour] || 0) + 1;
       byUser[b.requesterName] = (byUser[b.requesterName] || 0) + 1;
-      utilizationByBioscope[b.bioscopeId] = (utilizationByBioscope[b.bioscopeId] || 0) + (b.slotEnd - b.slotStart);
+      utilizationByBioscope[b.bioscopeId] =
+        (utilizationByBioscope[b.bioscopeId] || 0) + (b.slotEnd - b.slotStart);
     });
 
     const daySeries = Object.entries(byDay)
@@ -207,7 +216,12 @@ export default function BioscopeBookingUI() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <Header role={role} setRole={setRole} user={user} />
+        {/* pass a no-op setRole so Header's prop shape stays intact */}
+        <Header role={role} setRole={() => {}} user={user!} />
+
+          <div className="flex justify-end">
+            <LogoutButton />
+          </div>
 
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -253,7 +267,8 @@ export default function BioscopeBookingUI() {
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="student" value={role} onValueChange={(v: string) => setRole(v as "student" | "teacher" | "admin")} className="space-y-6">
+        {/* lock tabs to role: value is controlled; no onValueChange */}
+        <Tabs defaultValue="student" value={role} className="space-y-6">
           <TabsList className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-2xl">
             <TabsTrigger value="student" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Student</TabsTrigger>
             <TabsTrigger value="teacher" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Teacher</TabsTrigger>

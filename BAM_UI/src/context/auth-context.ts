@@ -1,11 +1,12 @@
 import { createContext, useContext } from "react";
-import type { Role, User } from "@types";
+import type { User } from "@types";
 
 export type AuthContextValue = {
-  user: User;
-  setUser: (u: User) => void;
-  role: Role;
-  setRole: (r: Role) => void;
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;  // hydration flag
+  login: (email: string, password: string) => Promise<void> | void;
+  logout: () => Promise<void> | void;
 };
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -15,6 +16,3 @@ export function useAuthContext() {
   if (!ctx) throw new Error("useAuthContext must be used within AuthProvider");
   return ctx;
 }
-// Context shape and consumer hook for authentication (user + role). The
-// provider component lives in `AuthContext.tsx` to keep that file exporting
-// only a React component for Fast Refresh friendliness.
