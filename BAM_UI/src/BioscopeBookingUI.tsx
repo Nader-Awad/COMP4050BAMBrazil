@@ -17,8 +17,7 @@ import ApprovalQueue from "@components/teacher/ApprovalQueue";
 import DayAtAGlance from "@components/teacher/DayAtAGlance";
 import AnalyticsDashboard from "@components/dashboard/AnalyticsDashboard";
 import { ApiError, BookingsAPI } from "@/services/apiClient";
-
-import { useAuthContext } from "./context/auth-context";
+import { useAuthContext } from "@context/auth-context";
 import LogoutButton from "./LoginOut/LogoutButton";
 
 const BIOSCOPES: Bioscope[] = [
@@ -60,7 +59,8 @@ const DAY_SLOTS: number[] = makeDaySlots();
 
 export default function BioscopeBookingUI() {
   const { user } = useAuthContext();
-  const role = user!.role as Role; // RequireAuth guarantees user
+  const userRole = (user?.role ?? "student") as Role;
+  const [viewRole, setViewRole] = useState<Role>(userRole);
 
   const [selectedDate, setSelectedDate] = useState<string>(toISODate(new Date()));
   const [selectedBioscope, setSelectedBioscope] = useState<string>(BIOSCOPES[0].id);
@@ -88,7 +88,19 @@ export default function BioscopeBookingUI() {
     [slotsForDay, occupied]
   );
 
-  const myBookings = useMemo(() => bookings.filter((b) => b.requesterId === user!.id), [bookings, user]);
+  useEffect(() => {
+    if (user) setViewRole(user.role as Role);
+  }, [user]);
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-600">
+        <span className="animate-pulse">Loading…</span>
+      </div>
+    );
+  }
+
+  const myBookings = useMemo(() => bookings.filter((b) => b.requesterId === user.id), [bookings, user]);
 
   const [draft, setDraft] = useState<BookingDraft>({ title: "", groupName: "", attendees: 1, slot: "" });
   const [isGroup, setIsGroup] = useState(false);
@@ -137,8 +149,8 @@ export default function BioscopeBookingUI() {
       title: draft.title.trim(),
       groupName: isGroup ? draft.groupName.trim() || undefined : undefined,
       attendees: isGroup ? Math.max(1, Number(draft.attendees) || 1) : undefined,
-      requesterId: user!.id,
-      requesterName: user!.name,
+      requesterId: user.id,
+      requesterName: user.name,
       status: "pending",
     };
     try {
@@ -216,12 +228,11 @@ export default function BioscopeBookingUI() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* pass a no-op setRole so Header's prop shape stays intact */}
-        <Header role={role} setRole={() => {}} user={user!} />
+        <Header role={viewRole} setRole={setViewRole} user={user} />
 
-          <div className="flex justify-end">
-            <LogoutButton />
-          </div>
+        <div className="flex justify-end">
+          <LogoutButton />
+        </div>
 
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -267,8 +278,11 @@ export default function BioscopeBookingUI() {
           </CardContent>
         </Card>
 
-        {/* lock tabs to role: value is controlled; no onValueChange */}
-        <Tabs defaultValue="student" value={role} className="space-y-6">
+        <Tabs
+          value={viewRole}
+          onValueChange={(v: string) => setViewRole(v as Role)}
+          className="space-y-6"
+        >
           <TabsList className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-2xl">
             <TabsTrigger value="student" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Student</TabsTrigger>
             <TabsTrigger value="teacher" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Teacher</TabsTrigger>

@@ -1,6 +1,12 @@
-// src/hooks/useAuth.ts
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@types";
+import {
+  API_BASE,
+  ACCESS_TOKEN_KEY,
+  REFRESH_TOKEN_KEY,
+  clearTokens,
+  setTokens,
+} from "@/services/apiClient";
 
 // tiny helper: decode base64url JWT w/o external deps
 function decodeJwt<T = any>(jwt: string): T | null {
@@ -25,10 +31,18 @@ function scheduleRefreshToken(jwt: string, cb: () => void): () => void {
   return () => clearTimeout(id);
 }
 
-const API_BASE = "http://localhost:3000/api";
 const STORAGE_USER    = "auth_user";
-const STORAGE_REFRESH = "auth_refresh";
-const STORAGE_ACCESS  = "auth_access";
+const STORAGE_REFRESH = REFRESH_TOKEN_KEY;
+const STORAGE_ACCESS  = ACCESS_TOKEN_KEY;
+
+function makeAuthUrl(path: string) {
+  try {
+    return new URL(path, API_BASE).toString();
+  } catch {
+    const base = API_BASE.endsWith("/") ? API_BASE.slice(0, -1) : API_BASE;
+    return `${base}${path}`;
+  }
+}
 
 type LoginOk = {
   success: boolean;
@@ -92,16 +106,6 @@ export function useAuth() {
     else localStorage.removeItem(STORAGE_USER);
   }, [user]);
 
-  useEffect(() => {
-    if (refreshToken) localStorage.setItem(STORAGE_REFRESH, refreshToken);
-    else localStorage.removeItem(STORAGE_REFRESH);
-  }, [refreshToken]);
-  
-  useEffect(() => {
-    if (accessToken) localStorage.setItem(STORAGE_ACCESS, accessToken);
-    else localStorage.removeItem(STORAGE_ACCESS);
-  }, [accessToken]);
-
   // restore/refresh on mount (do NOT force-logout on refresh hiccups)
   useEffect(() => {
     // If we already have a valid AT, derive user immediately for UX
@@ -114,7 +118,7 @@ export function useAuth() {
       const rt = refreshToken;
       if (!rt) { setIsLoading(false); return; }
       try {
-        const r = await fetch(`${API_BASE}/auth/refresh`, {
+        const r = await fetch(makeAuthUrl("/api/auth/refresh"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: rt }),
@@ -125,8 +129,9 @@ export function useAuth() {
         try { j = raw ? JSON.parse(raw) : null; } catch {}
         if (!j || j.success !== true || !j.data || !j.data.token) { console.warn("[refresh:on-mount] bad payload", j || raw); return; }
         const d = j.data;
+        setTokens(d.token, d.refresh_token ?? undefined);
         setAccessToken(d.token);
-        if (d.refresh_token) setRefreshToken(d.refresh_token);
+        setRefreshToken(d.refresh_token ?? null);
         const u = userFromJwt(d.token);
         if (u) setUser(u);
       } catch (e) {
@@ -145,7 +150,7 @@ export function useAuth() {
     if (accessToken && refreshToken) {
       clearRef.current = scheduleRefreshToken(accessToken, async () => {
         try {
-          const r = await fetch(`${API_BASE}/auth/refresh`, {
+          const r = await fetch(makeAuthUrl("/api/auth/refresh"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ refresh_token: refreshToken }),
@@ -156,8 +161,9 @@ export function useAuth() {
           try { j = raw ? JSON.parse(raw) : null; } catch {}
           if (!j || j.success !== true || !j.data || !j.data.token) { console.warn("[refresh:auto] bad payload", j || raw); return; }
           const d = j.data;
+          setTokens(d.token, d.refresh_token ?? undefined);
           setAccessToken(d.token);
-          if (d.refresh_token) setRefreshToken(d.refresh_token);
+          setRefreshToken(d.refresh_token ?? null);
           const u = userFromJwt(d.token);
           if (u) setUser(u);
         } catch (e) {
@@ -169,7 +175,7 @@ export function useAuth() {
   }, [accessToken, refreshToken]);
 
   async function login(email: string, password: string) {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(makeAuthUrl("/api/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -188,8 +194,9 @@ export function useAuth() {
       throw new Error(msg);
     }
     const d = j.data;
+    setTokens(d.token, d.refresh_token);
     setAccessToken(d.token);
-    setRefreshToken(d.refresh_token);
+    setRefreshToken(d.refresh_token ?? null);
     const u = userFromJwt(d.token) ?? {
       id: d.user.id,
       name: d.user.name,
@@ -200,7 +207,7 @@ export function useAuth() {
 
   async function logout() {
     try {
-      await fetch(`${API_BASE}/auth/logout`, {
+      await fetch(makeAuthUrl("/api/auth/logout"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -209,8 +216,7 @@ export function useAuth() {
       setAccessToken(null);
       setRefreshToken(null);
       localStorage.removeItem(STORAGE_USER);
-      localStorage.removeItem(STORAGE_REFRESH);
-      localStorage.removeItem(STORAGE_ACCESS);
+      clearTokens();
     }
   }
 
