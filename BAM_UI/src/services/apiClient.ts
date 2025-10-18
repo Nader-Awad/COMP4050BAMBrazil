@@ -154,7 +154,7 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
   let reqInit: RequestInitExt = {
     method,
     headers,
-    credentials: "include", // incase backend also uses httpOnly cookies
+    credentials: "omit",
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     ...init,
   };
@@ -323,7 +323,7 @@ export const BookingsAPI = {
   get(id: string): Promise<Booking> {
     return request<Booking>(`/api/bookings/${encodeURIComponent(id)}`, "GET");
   },
-  create(payload: Partial<Booking>): Promise<Booking> {
+  create(payload: unknown): Promise<Booking> {
     return request<Booking>("/api/bookings", "POST", payload);
   },
   update(id: string, payload: Partial<Booking>): Promise<Booking> {

@@ -170,12 +170,12 @@ pub async fn create_booking(
         )));
     }
 
-    // Get user information
-    let user = state
-        .db
-        .get_user_by_id(claims.user_id)
-        .await?
-        .ok_or(AppError::NotFound("User not found".to_string()))?;
+    // Get user information (fallback to claims if not present in DB)
+    let (requester_id, requester_name) = match state.db.get_user_by_id(claims.user_id).await {
+        Ok(Some(user)) => (user.id, user.name),
+        Ok(None) => (claims.user_id, format!("{:?}", claims.role)),
+        Err(_) => (claims.user_id, format!("{:?}", claims.role)),
+    };
 
     let booking = Booking {
         id: Uuid::new_v4(),
@@ -186,8 +186,8 @@ pub async fn create_booking(
         title: request.title,
         group_name: request.group_name,
         attendees: request.attendees,
-        requester_id: claims.user_id,
-        requester_name: user.name,
+        requester_id,
+        requester_name,
         status: BookingStatus::Pending,
         approved_by: None,
         created_at: chrono::Utc::now().into(),

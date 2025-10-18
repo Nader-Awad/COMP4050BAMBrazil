@@ -59,7 +59,8 @@ const DAY_SLOTS: number[] = makeDaySlots();
 
 export default function BioscopeBookingUI() {
   const { user } = useAuthContext();
-  const userRole = (user?.role ?? "student") as Role;
+  const currentUser = user;
+  const userRole = (currentUser?.role ?? "student") as Role;
   const [viewRole, setViewRole] = useState<Role>(userRole);
 
   const [selectedDate, setSelectedDate] = useState<string>(toISODate(new Date()));
@@ -89,10 +90,10 @@ export default function BioscopeBookingUI() {
   );
 
   useEffect(() => {
-    if (user) setViewRole(user.role as Role);
-  }, [user]);
+    if (currentUser) setViewRole(currentUser.role as Role);
+  }, [currentUser]);
 
-  if (!user) {
+  if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-600">
         <span className="animate-pulse">Loading…</span>
@@ -100,7 +101,12 @@ export default function BioscopeBookingUI() {
     );
   }
 
-  const myBookings = useMemo(() => bookings.filter((b) => b.requesterId === user.id), [bookings, user]);
+  const ensuredUser = currentUser;
+
+  const myBookings = useMemo(
+    () => bookings.filter((b) => b.requesterId === ensuredUser.id),
+    [bookings, ensuredUser.id],
+  );
 
   const [draft, setDraft] = useState<BookingDraft>({ title: "", groupName: "", attendees: 1, slot: "" });
   const [isGroup, setIsGroup] = useState(false);
@@ -141,17 +147,14 @@ export default function BioscopeBookingUI() {
       return;
     }
 
-    const payload: Partial<Booking> = {
-      bioscopeId: selectedBioscope,
+    const payload = {
+      microscope_id: selectedBioscope,
       date: selectedDate,
-      slotStart: start,
-      slotEnd: end,
+      slot_start: start,
+      slot_end: end,
       title: draft.title.trim(),
-      groupName: isGroup ? draft.groupName.trim() || undefined : undefined,
+      group_name: isGroup ? draft.groupName.trim() || undefined : undefined,
       attendees: isGroup ? Math.max(1, Number(draft.attendees) || 1) : undefined,
-      requesterId: user.id,
-      requesterName: user.name,
-      status: "pending",
     };
     try {
       const created = await BookingsAPI.create(payload);
@@ -228,7 +231,7 @@ export default function BioscopeBookingUI() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <Header role={viewRole} setRole={setViewRole} user={user} />
+        <Header role={viewRole} setRole={setViewRole} user={currentUser} />
 
         <div className="flex justify-end">
           <LogoutButton />

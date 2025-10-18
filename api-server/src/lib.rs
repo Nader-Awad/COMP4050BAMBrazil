@@ -14,7 +14,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     services::ServeDir,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
@@ -109,6 +109,8 @@ pub struct AppState {
 
 /// Create the main application router with all routes and middleware
 pub fn create_router(state: AppState) -> Router {
+    let cors = CorsLayer::permissive();
+
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         // OpenAPI documentation
         // Health check
@@ -200,12 +202,7 @@ pub fn create_router(state: AppState) -> Router {
             state.clone(),
             middleware::auth::auth_middleware,
         ))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
+        .layer(cors)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
