@@ -83,8 +83,8 @@ async fn test_login_endpoint() {
     let app = create_test_app();
 
     let login_data = json!({
-        "email": "student@bam.edu",
-        "password": "student123"
+        "email": "admin@bam.edu",
+        "password": "admin123"
     });
 
     let request = Request::builder()

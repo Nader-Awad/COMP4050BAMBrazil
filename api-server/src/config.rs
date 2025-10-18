@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::env;
+use std::{env, path::Path};
 
 /// Application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,7 +47,11 @@ pub struct IAConfig {
 impl Config {
     /// Load configuration from environment variables
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-        dotenvy::dotenv().ok(); // Load .env file if it exists
+        if dotenvy::dotenv().is_err() {
+            if Path::new(".env.example").exists() {
+                dotenvy::from_filename(".env.example").ok();
+            }
+        }
 
         let server = ServerConfig {
             bind_address: env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0:3000".to_string()),

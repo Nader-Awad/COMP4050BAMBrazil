@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Filter } from "lucide-react";
 import { Card, CardContent } from "@components/ui/card";
 import { Input } from "@components/ui/input";
@@ -16,6 +16,9 @@ import BookingSchedule from "@components/booking/BookingSchedule";
 import ApprovalQueue from "@components/teacher/ApprovalQueue";
 import DayAtAGlance from "@components/teacher/DayAtAGlance";
 import AnalyticsDashboard from "@components/dashboard/AnalyticsDashboard";
+import { ApiError, BookingsAPI } from "@/services/apiClient";
+import { useAuthContext } from "@context/auth-context";
+import LogoutButton from "./LoginOut/LogoutButton";
 
 const BIOSCOPES: Bioscope[] = [
   { id: "bio-1", name: "Bioscope A" },
@@ -55,51 +58,15 @@ const DAY_SLOTS: number[] = makeDaySlots();
 // Types are declared in @types
 
 export default function BioscopeBookingUI() {
-  const [role, setRole] = useState<Role>("student");
-  const [user] = useState({ id: "u-stu-01", name: "Alex Student", role: "student" });
+  const { user } = useAuthContext();
+  const userRole = (user?.role ?? "student") as Role;
+  const [viewRole, setViewRole] = useState<Role>(userRole);
+
   const [selectedDate, setSelectedDate] = useState<string>(toISODate(new Date()));
   const [selectedBioscope, setSelectedBioscope] = useState<string>(BIOSCOPES[0].id);
-
-  const [bookings, setBookings] = useState<Booking[]>([
-    {
-      id: "b1",
-      bioscopeId: "bio-1",
-      date: toISODate(new Date()),
-      slotStart: 9 * 60,
-      slotEnd: 10 * 60,
-      title: "Yr10 Biology: Cell Observation",
-      groupName: "Team Mito",
-      attendees: 4,
-      requesterId: "u-stu-99",
-      requesterName: "Jamie",
-      status: "approved",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "b2",
-      bioscopeId: "bio-1",
-      date: toISODate(new Date()),
-      slotStart: 13 * 60,
-      slotEnd: 13 * 60 + 30,
-      title: "Microbe Prep",
-      requesterId: "u-stu-88",
-      requesterName: "Morgan",
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "b3",
-      bioscopeId: "bio-2",
-      date: toISODate(new Date()),
-      slotStart: 10 * 60 + 30,
-      slotEnd: 11 * 60 + 30,
-      title: "Chem Bio cross-lab",
-      requesterId: "u-stu-77",
-      requesterName: "Taylor",
-      status: "approved",
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<BookingFilters>({
     showApproved: true,
@@ -116,31 +83,65 @@ export default function BioscopeBookingUI() {
 
   const occupied = useMemo(() => new Set(dayBookings.map(occupiedKey)), [dayBookings]);
 
-  const openSlots = useMemo(() =>
-    slotsForDay.filter((s) => !Array.from(occupied).includes(`${s.start}-${s.end}`)),
-    [slotsForDay, occupied]);
+  const openSlots = useMemo(
+    () => slotsForDay.filter((s) => !Array.from(occupied).includes(`${s.start}-${s.end}`)),
+    [slotsForDay, occupied]
+  );
 
-  const myBookings = useMemo(() => bookings.filter((b) => b.requesterId === user.id), [bookings, user.id]);
+  useEffect(() => {
+    if (user) setViewRole(user.role as Role);
+  }, [user]);
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-600">
+        <span className="animate-pulse">Loading…</span>
+      </div>
+    );
+  }
+
+  const myBookings = useMemo(() => bookings.filter((b) => b.requesterId === user.id), [bookings, user]);
 
   const [draft, setDraft] = useState<BookingDraft>({ title: "", groupName: "", attendees: 1, slot: "" });
   const [isGroup, setIsGroup] = useState(false);
 
-  function submitBooking() {
+  const loadBookings = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await BookingsAPI.list();
+      setBookings(data);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to load bookings.";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBookings();
+  }, [loadBookings]);
+
+  async function submitBooking() {
     if (!draft.title || !draft.slot) return;
+    setError(null);
     const [startStr, endStr] = draft.slot.split("-");
     const start = parseInt(startStr, 10);
     const end = parseInt(endStr, 10);
 
     const conflict = bookings.some(
-      (b) => b.bioscopeId === selectedBioscope && b.date === selectedDate && !(end <= b.slotStart || start >= b.slotEnd)
+      (b) =>
+        b.bioscopeId === selectedBioscope &&
+        b.date === selectedDate &&
+        !(end <= b.slotStart || start >= b.slotEnd)
     );
     if (conflict) {
       alert("This time overlaps an existing booking.");
       return;
     }
 
-    const newBooking: Booking = {
-      id: `b-${Math.random().toString(36).slice(2, 8)}`,
+    const payload: Partial<Booking> = {
       bioscopeId: selectedBioscope,
       date: selectedDate,
       slotStart: start,
@@ -151,18 +152,38 @@ export default function BioscopeBookingUI() {
       requesterId: user.id,
       requesterName: user.name,
       status: "pending",
-      createdAt: new Date().toISOString(),
     };
-    setBookings((prev) => [...prev, newBooking]);
+    try {
+      const created = await BookingsAPI.create(payload);
+      setBookings((prev) => [...prev, created]);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to create booking.";
+      setError(message);
+      return;
+    }
     setDraft({ title: "", groupName: "", attendees: 1, slot: "" });
   }
 
-  function setStatus(id: string, status: Booking["status"]) {
-    setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b)));
+  async function setStatus(id: string, status: Booking["status"]) {
+    setError(null);
+    try {
+      const updated = await BookingsAPI.update(id, { status });
+      setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to update booking.";
+      setError(message);
+    }
   }
 
-  function removeBooking(id: string) {
-    setBookings((prev) => prev.filter((b) => b.id !== id));
+  async function removeBooking(id: string) {
+    setError(null);
+    try {
+      await BookingsAPI.remove(id);
+      setBookings((prev) => prev.filter((b) => b.id !== id));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to delete booking.";
+      setError(message);
+    }
   }
 
   const analytics = useMemo(() => {
@@ -178,7 +199,8 @@ export default function BioscopeBookingUI() {
       const hour = Math.floor(b.slotStart / 60);
       byHour[hour] = (byHour[hour] || 0) + 1;
       byUser[b.requesterName] = (byUser[b.requesterName] || 0) + 1;
-      utilizationByBioscope[b.bioscopeId] = (utilizationByBioscope[b.bioscopeId] || 0) + (b.slotEnd - b.slotStart);
+      utilizationByBioscope[b.bioscopeId] =
+        (utilizationByBioscope[b.bioscopeId] || 0) + (b.slotEnd - b.slotStart);
     });
 
     const daySeries = Object.entries(byDay)
@@ -206,7 +228,20 @@ export default function BioscopeBookingUI() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <Header role={role} setRole={setRole} user={user} />
+        <Header role={viewRole} setRole={setViewRole} user={user} />
+
+        <div className="flex justify-end">
+          <LogoutButton />
+        </div>
+
+        {error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        ) : null}
+        {isLoading ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Loading bookings…
+          </div>
+        ) : null}
 
         <Card className="border-0 shadow-sm">
           <CardContent className="p-4 md:p-6">
@@ -243,7 +278,11 @@ export default function BioscopeBookingUI() {
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="student" value={role} onValueChange={(v: string) => setRole(v as "student" | "teacher" | "admin")} className="space-y-6">
+        <Tabs
+          value={viewRole}
+          onValueChange={(v: string) => setViewRole(v as Role)}
+          className="space-y-6"
+        >
           <TabsList className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-2xl">
             <TabsTrigger value="student" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Student</TabsTrigger>
             <TabsTrigger value="teacher" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Teacher</TabsTrigger>
@@ -298,7 +337,9 @@ export default function BioscopeBookingUI() {
           </TabsContent>
         </Tabs>
 
-        <p className="text-xs text-slate-500 text-center">This is a demo UI with in-memory state. Wire up to your backend to persist bookings, enforce policies (e.g., per-student limits), and sync across users.</p>
+        <p className="text-xs text-slate-500 text-center">
+          This is a demo UI. Connect additional endpoints to extend persistence, enforce policies, and sync across users.
+        </p>
       </div>
     </div>
   );
