@@ -299,7 +299,18 @@ pub async fn end_session(
 
     // End the session in database
     let ended_session = state.db.end_session(session_id, request.notes).await?;
-    // TODO: Update microscope status in IA system
+
+    // Update microscope status in IA system
+    if let Err(e) = state
+        .ia_client
+        .update_session_status(&ended_session.microscope_id, None, false)
+        .await
+    {
+        tracing::warn!(
+            "Failed to update microscope status in IA system: {}. Session ended in database.",
+            e
+        );
+    }
 
     tracing::info!(
         "Ended session: {} for user: {}",
