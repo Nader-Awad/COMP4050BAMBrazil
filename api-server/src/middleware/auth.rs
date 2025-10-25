@@ -15,6 +15,8 @@ use crate::{models::UserRole, AppState};
 /// JWT Claims structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
+    pub sub: String,
+    #[serde(skip)]
     pub user_id: Uuid,
     pub role: UserRole,
     pub session_id: Option<Uuid>,
@@ -70,9 +72,12 @@ fn validate_jwt_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken:
     let decoding_key = DecodingKey::from_secret(secret.as_ref());
     let validation = Validation::default();
 
-    let token_data = decode::<Claims>(token, &decoding_key, &validation)?;
+    let mut token_data = decode::<Claims>(token, &decoding_key, &validation)?;
+
+    token_data.claims.user_id = Uuid::parse_str(&token_data.claims.sub).map_err(|_| jsonwebtoken::errors::ErrorKind::InvalidToken)?.into();
     Ok(token_data.claims)
 }
+
 
 /// Generate JWT token for user
 pub fn generate_jwt_token(
@@ -90,7 +95,7 @@ pub fn generate_jwt_token(
         .as_secs();
 
     let claims = Claims {
-        user_id,
+        sub: user_id.to_string(),
         role,
         session_id,
         exp: (now + expiry) as usize,

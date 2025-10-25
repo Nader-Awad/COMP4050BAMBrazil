@@ -40,6 +40,7 @@ use utoipa_swagger_ui::SwaggerUi;
         handlers::auth::login,
         handlers::auth::logout,
         handlers::auth::refresh_token,
+        handlers::auth::users_me,
         handlers::bookings::list_bookings,
         handlers::bookings::create_booking,
         handlers::bookings::get_booking,
@@ -119,6 +120,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/logout", post(handlers::auth::logout))
         .route("/api/auth/refresh", post(handlers::auth::refresh_token))
+        //Identity
+        .route("/api/users/me", get(handlers::auth::users_me))
         // Booking routes (from existing UI)
         .route("/api/bookings", get(handlers::bookings::list_bookings))
         .route("/api/bookings", post(handlers::bookings::create_booking))

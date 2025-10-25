@@ -1,4 +1,4 @@
-use axum::{extract::State, http::StatusCode, response::Json};
+use axum::{extract::State, http::StatusCode, response::Json, Extension};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -6,7 +6,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    middleware::auth::generate_jwt_token,
+    middleware::auth::{generate_jwt_token, Claims},
     models::{ApiResponse, User, UserRole},
     services::database::DatabaseService,
     AppError, AppState,
@@ -172,7 +172,8 @@ pub async fn refresh_token(
         }
     };
 
-    let claims = token_data.claims;
+    let mut claims = token_data.claims;
+    claims.user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Generate new access token
     let new_token = generate_jwt_token(
@@ -260,4 +261,28 @@ pub fn hash_password(password: &str) -> Result<String, AuthError> {
 /// Verify password against hash
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, AuthError> {
     verify(password, hash).map_err(|_| AuthError::HashError)
+}
+
+
+#[utoipa::path(
+    get,
+    path = "/api/users/me",
+    tag = "authentication",
+    responses(
+        (status = 200, description = "Current user", body = ApiResponse<User>),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn users_me(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<ApiResponse<User>>, AppError> {
+    let user = state
+        .db
+        .get_user_by_id(claims.user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("User not found for token subject"))?;
+    Ok(Json(ApiResponse::success(user)))
 }
