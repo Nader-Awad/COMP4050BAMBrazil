@@ -15,6 +15,17 @@ type Props = {
   onJumpCommit: () => void;
 };
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return (
+    target.isContentEditable ||
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT"
+  );
+}
+
 export function CalendarNav({
   mode,
   onModeChange,
@@ -29,6 +40,9 @@ export function CalendarNav({
   /* ----------------- Keyboard Navigation ----------------- */
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      // Ignore when typing in any editable element
+      if (isEditableTarget(e.target)) return;
+
       if (e.key === "ArrowLeft") onPrev();
       if (e.key === "ArrowRight") onNext();
       if (e.key.toLowerCase() === "t") onToday();
