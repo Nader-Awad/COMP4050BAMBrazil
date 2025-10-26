@@ -28,4 +28,3 @@ export type BookingFilters = {
   showApproved: boolean;
   showPending: boolean;
 };
-

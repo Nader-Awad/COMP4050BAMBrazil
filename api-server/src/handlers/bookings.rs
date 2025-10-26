@@ -170,7 +170,7 @@ pub async fn create_booking(
         )));
     }
 
-    // Get user information
+    // Get user information (fallback to claims if not present in DB)
     let user = state
         .db
         .get_user_by_id(claims.user_id)
@@ -186,7 +186,7 @@ pub async fn create_booking(
         title: request.title,
         group_name: request.group_name,
         attendees: request.attendees,
-        requester_id: claims.user_id,
+        requester_id: user.id,
         requester_name: user.name,
         status: BookingStatus::Pending,
         approved_by: None,

@@ -19,10 +19,7 @@ export const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
   `${window.location.origin}`; // goes to default
 
-
 const REFRESH_ENDPOINT = "/api/auth/refresh";
-
-
 
 // ---------- Store Tokens (localStorage) ----------
 
@@ -48,6 +45,39 @@ export function setTokens(access?: string | null, refresh?: string | null) {
 export function clearTokens() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+type BookingDto = {
+  id: string;
+  microscope_id: string;
+  date: string;
+  slot_start: number;
+  slot_end: number;
+  title: string;
+  group_name: string | null;
+  attendees: number | null;
+  requester_id: string;
+  requester_name: string;
+  status: string;
+  approved_by: string | null;
+  created_at: string;
+};
+
+function toBooking(dto: BookingDto): Booking {
+  return {
+    id: dto.id,
+    bioscopeId: dto.microscope_id,
+    date: dto.date,
+    slotStart: dto.slot_start,
+    slotEnd: dto.slot_end,
+    title: dto.title,
+    groupName: dto.group_name ?? undefined,
+    attendees: dto.attendees ?? undefined,
+    requesterId: dto.requester_id,
+    requesterName: dto.requester_name,
+    status: dto.status.toLowerCase() as Booking["status"],
+    createdAt: dto.created_at,
+  };
 }
 
 // ---------- Loading State ----------
@@ -154,17 +184,10 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
   let reqInit: RequestInitExt = {
     method,
     headers,
-    credentials: "include", // incase backend also uses httpOnly cookies
+    credentials: "omit",
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     ...init,
   };
-
-  // Run pre-interceptors
-  for (const pre of preInterceptors) {
-    const res = await pre(url, reqInit);
-    url; // no change to url in this design
-    reqInit = res.init as RequestInitExt;
-  }
 
   const maxRetry = init?.retry ?? 2;
   const baseDelay = init?.retryDelayMs ?? 300;
@@ -188,7 +211,6 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
         if (res.status === 401 && attempt <= maxRetry) {
           const refreshed = await tryRefreshToken();
           if (refreshed) {
-            // inject new token and retry immediately
             const newAccess = getAccessToken();
             if (newAccess) {
               (reqInit.headers as Record<string, string>) = {
@@ -199,22 +221,17 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
             attempt++;
             continue;
           }
-          // refresh failed -> clear and throw
           clearTokens();
           const { message } = await parseErrorMessage(res);
           throw new ApiError(message || "Unauthorised", { status: 401 });
         }
 
-        // Success path
         if (res.ok) {
-          // No content
           if (res.status === 204) return undefined as T;
           const ct = res.headers.get("content-type") ?? "";
-          
+
           if (ct.includes("application/json")) {
             const parsed = await res.json();
-
-            // Auto-unwrap ApiResponse<T> shape from backend
             if (parsed && typeof parsed === "object" && "success" in parsed) {
               if (parsed.success) {
                 return (parsed.data ?? undefined) as T;
@@ -224,33 +241,29 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
                 details: parsed,
               });
             }
-
             return parsed as T;
           }
-          
-          // Non-JSON (e.g. images/blob). 
-          // @ts-expect-error (caller should know the expected type)
+
+          // Non-JSON (e.g. images/blob)
+          // @ts-expect-error (caller should know expected type)
           return await res.blob();
         }
 
-        // 5xx -> retry with backoff
+        // Retry 5xx
         if (res.status >= 500 && res.status <= 599 && attempt < maxRetry) {
           await delay(expBackoff(attempt, baseDelay));
           attempt++;
           continue;
         }
 
-        // Other errors (4xx etc.)
         const { message, code, details } = await parseErrorMessage(res);
         throw new ApiError(message || `HTTP ${res.status}`, { status: res.status, code, details });
       } catch (err: any) {
         lastErr = err;
-        // Network / CORS / aborted -> retry
         const transient =
           err instanceof TypeError ||
-          (err?.name === "AbortError") ||
+          err?.name === "AbortError" ||
           (err?.message && /network|fetch|failed|offline/i.test(String(err.message)));
-
         if (transient && attempt < maxRetry) {
           await delay(expBackoff(attempt, baseDelay));
           attempt++;
@@ -259,7 +272,6 @@ async function request<T>(path: string, method: HttpMethod, body?: any, init?: R
         throw err;
       }
     }
-    // If we exit the loop, throw the last error
     throw lastErr instanceof Error ? lastErr : new Error("Unknown request error");
   } finally {
     endRequest();
@@ -270,17 +282,13 @@ function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 function expBackoff(attempt: number, base: number) {
-  // attempt: 0,1,2 -> 1x,2x,4x jitters
   const factor = 2 ** attempt;
-  const jitter = Math.random() * 0.25 + 0.875; // 0.875..1.125
+  const jitter = Math.random() * 0.25 + 0.875;
   return Math.round(base * factor * jitter);
 }
 
 // ---------- JWT Refresh ----------
 
-/**
- * Try to refresh the access token using the refresh token.
- */
 async function tryRefreshToken(): Promise<boolean> {
   const rt = getRefreshToken();
   if (!rt) return false;
@@ -299,8 +307,8 @@ async function tryRefreshToken(): Promise<boolean> {
     if (!res.ok) return false;
 
     const parsed = await res.json().catch(() => ({}));
-    const payload = parsed?.data ?? parsed; // unwrap if present
-    const access  = payload.accessToken ?? payload.token ?? payload.access_token;
+    const payload = parsed?.data ?? parsed;
+    const access = payload.accessToken ?? payload.token ?? payload.access_token;
     const refresh = payload.refreshToken ?? payload.refresh_token;
 
     if (access) {
@@ -317,20 +325,101 @@ async function tryRefreshToken(): Promise<boolean> {
 
 // Bookings
 export const BookingsAPI = {
-  list(): Promise<Booking[]> {
-    return request<Booking[]>("/api/bookings", "GET");
+  /**
+   * List bookings for a single day and microscope.
+   * Backend contract requires BOTH date (YYYY-MM-DD) and microscope_id.
+   */
+  async list(params: { date: string; bioscopeId: string; status?: string }): Promise<Booking[]> {
+    const { date, bioscopeId, status } = params;
+    if (!date || !bioscopeId) {
+      throw new ApiError("BookingsAPI.list requires { date, bioscopeId }");
+    }
+    const q = new URLSearchParams();
+    q.set("date", date); // YYYY-MM-DD
+    q.set("microscope_id", bioscopeId);
+    if (status) q.set("status", status);
+    const path = `/api/bookings?${q.toString()}`;
+
+    const result = await request<BookingDto[]>(path, "GET");
+    return (result ?? []).map(toBooking);
   },
-  get(id: string): Promise<Booking> {
-    return request<Booking>(`/api/bookings/${encodeURIComponent(id)}`, "GET");
+
+  /**
+   * Batch fetch for a visible week: call the day endpoint for each date.
+   */
+  async listRange(params: { dates: string[]; bioscopeId: string }): Promise<Booking[]> {
+    const { dates, bioscopeId } = params;
+    if (!Array.isArray(dates) || dates.length === 0 || !bioscopeId) {
+      throw new ApiError("BookingsAPI.listRange requires { dates[], bioscopeId }");
+    }
+    const paths = dates.map((d) => {
+      const p = new URLSearchParams();
+      p.set("date", d);
+      p.set("microscope_id", bioscopeId);
+      p.set("limit", "500");
+      return `/api/bookings?${p.toString()}`;
+    });
+    const results = await Promise.allSettled(paths.map((p) => request<BookingDto[]>(p, "GET")));
+    const okArrays = results.map((r) => (r.status === "fulfilled" ? (r as PromiseFulfilledResult<BookingDto[]>).value : [])).flat();
+    return okArrays.map(toBooking);
   },
-  create(payload: Partial<Booking>): Promise<Booking> {
-    return request<Booking>("/api/bookings", "POST", payload);
+
+  async get(id: string): Promise<Booking> {
+    const dto = await request<BookingDto>(`/api/bookings/${encodeURIComponent(id)}`, "GET");
+    return toBooking(dto);
   },
-  update(id: string, payload: Partial<Booking>): Promise<Booking> {
-    return request<Booking>(`/api/bookings/${encodeURIComponent(id)}`, "PUT", payload);
+
+  /**
+   * Create booking: payload must match backend (flat body):
+   * { attendees?, date, group_name?, microscope_id, slot_end, slot_start, title }
+   * (Requester is derived on the server from JWT claims.)
+   */
+  async create(payload: {
+    date: string;
+    microscope_id: string;
+    slot_start: number;
+    slot_end: number;
+    title: string;
+    group_name?: string;
+    attendees?: number;
+  }): Promise<Booking> {
+    const dto = await request<BookingDto>("/api/bookings", "POST", payload);
+    return toBooking(dto);
   },
+
+  async update(id: string, payload: Partial<Booking>): Promise<Booking> {
+    const body: Record<string, unknown> = {};
+    if (payload.title !== undefined) body.title = payload.title;
+    if (payload.groupName !== undefined) body.group_name = payload.groupName;
+    if (payload.attendees !== undefined) body.attendees = payload.attendees;
+    if (payload.status) {
+      const statusMap: Record<Booking["status"], string> = {
+        pending: "Pending",
+        approved: "Approved",
+        rejected: "Rejected",
+      };
+      body.status = statusMap[payload.status];
+    }
+    const dto = await request<BookingDto>(`/api/bookings/${encodeURIComponent(id)}`, "PUT", body);
+    return toBooking(dto);
+  },
+
   remove(id: string): Promise<void> {
     return request<void>(`/api/bookings/${encodeURIComponent(id)}`, "DELETE");
+  },
+
+  approve(id: string): Promise<Booking> {
+    return request<BookingDto>(
+      `/api/bookings/${encodeURIComponent(id)}/approve`,
+      "POST"
+    ).then(toBooking);
+  },
+
+  reject(id: string): Promise<Booking> {
+    return request<BookingDto>(
+      `/api/bookings/${encodeURIComponent(id)}/reject`,
+      "POST"
+    ).then(toBooking);
   },
 };
 
@@ -347,11 +436,7 @@ export const SessionsAPI = {
 // Define a type that matches backend Image model
 type ImageMeta = {
   id: string;
-  // Add any other fields your backend exposes in the Image model:
-  // e.g. file_path?: string;
-  //       owner_id?: string;
-  //       created_at?: string;
-  //       microscope_id?: string;
+  // Add other fields if backend exposes them
 };
 
 // ---------- Images ----------
@@ -360,20 +445,13 @@ export const ImagesAPI = {
     return request<ImageMeta>(`/api/images/${encodeURIComponent(id)}`, "GET");
   },
   getLatestForSession(sessionId: string): Promise<ImageMeta> {
-    return request<ImageMeta>(
-      `/api/sessions/${encodeURIComponent(sessionId)}/images/latest`,
-      "GET"
-    );
+    return request<ImageMeta>(`/api/sessions/${encodeURIComponent(sessionId)}/images/latest`, "GET");
   },
 };
 
 // ---------- Microscope ----------
 export const MicroscopeAPI = {
-  command(
-    microscopeId: string,
-    command: string,
-    params?: Record<string, unknown>
-  ): Promise<any> {
+  command(microscopeId: string, command: string, params?: Record<string, unknown>): Promise<any> {
     return request<any>(
       `/api/microscope/${encodeURIComponent(microscopeId)}/command`,
       "POST",
@@ -381,15 +459,9 @@ export const MicroscopeAPI = {
     );
   },
   capture(microscopeId: string): Promise<ImageMeta> {
-    return request<ImageMeta>(
-      `/api/microscope/${encodeURIComponent(microscopeId)}/capture`,
-      "POST"
-    );
+    return request<ImageMeta>(`/api/microscope/${encodeURIComponent(microscopeId)}/capture`, "POST");
   },
   status(microscopeId: string): Promise<any> {
-    return request<any>(
-      `/api/microscope/${encodeURIComponent(microscopeId)}/status`,
-      "GET"
-    );
+    return request<any>(`/api/microscope/${encodeURIComponent(microscopeId)}/status`, "GET");
   },
 };

@@ -182,3 +182,4 @@ async fn test_cors_headers() {
     // Should handle CORS preflight
     assert!(response.status() == StatusCode::OK || response.status() == StatusCode::NO_CONTENT);
 }
+

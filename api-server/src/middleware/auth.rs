@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use axum::{
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
@@ -29,19 +27,14 @@ pub async fn auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let claims = Claims {
-        // user_id: Uuid::from_str("9a0c4b95-a85a-4ea3-8c6e-5184462d1ac1").unwrap(),
-        user_id: Uuid::from_str("e9b79d00-1d80-46cf-8451-50b716a55489").unwrap(),
-        role: UserRole::Student,
-        session_id: Some(Uuid::new_v4()),
-        exp: 1044,
-        iat: 32111,
-    };
-    request.extensions_mut().insert(claims);
     let path = request.uri().path();
 
-    // Skip authentication for health check and auth endpoints
-    if path == "/health" || path.starts_with("/api") || path.starts_with("/swagger") {
+    // Skip authentication for health check and public auth endpoints
+    if path == "/health" 
+        || path == "/api/auth/login" 
+        || path == "/api/auth/refresh"
+        || path == "/api/auth/logout"
+        || path.starts_with("/swagger") {
         return Ok(next.run(request).await);
     }
 
