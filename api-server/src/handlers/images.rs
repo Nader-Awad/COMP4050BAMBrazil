@@ -4,6 +4,7 @@ use axum::{
     response::{Json, Response},
     Extension,
 };
+use chrono::NaiveDate;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -62,7 +63,12 @@ pub async fn get_image(
 
     // Check permissions based on role and ownership
     if !can_access_image(&state, &claims, &image).await {
-        return Ok(Json(ApiResponse::error("Access denied".to_string())));
+        tracing::warn!(
+            "User {} attempted to access forbidden image {}",
+            claims.user_id,
+            image_id
+        );
+        return Err(StatusCode::FORBIDDEN);
     }
 
     Ok(Json(ApiResponse::success(image)))
@@ -165,9 +171,12 @@ pub async fn get_latest_image_for_session(
     match claims.role {
         UserRole::Student => {
             if session.user_id != claims.user_id {
-                return Ok(Json(ApiResponse::error(
-                    "Access denied - can only view own sessions".to_string(),
-                )));
+                tracing::warn!(
+                    "User {} attempted to access session {} they do not own",
+                    claims.user_id,
+                    session_id
+                );
+                return Err(StatusCode::FORBIDDEN);
             }
         }
         UserRole::Teacher | UserRole::Admin => {
@@ -222,9 +231,12 @@ pub async fn get_all_images_for_session(
     match claims.role {
         UserRole::Student => {
             if session.user_id != claims.user_id {
-                return Ok(Json(ApiResponse::error(
-                    "Access denied - can only view own sessions".to_string(),
-                )));
+                tracing::warn!(
+                    "User {} attempted to list images for session {} they do not own",
+                    claims.user_id,
+                    session_id
+                );
+                return Err(StatusCode::FORBIDDEN);
             }
         }
         UserRole::Teacher | UserRole::Admin => {
@@ -270,7 +282,12 @@ pub async fn get_all_images_for_user(
     match claims.role {
         UserRole::Student => {
             if claims.user_id != user_id {
-                return Ok(Json(ApiResponse::error("Access denied".to_string())));
+                tracing::warn!(
+                    "User {} attempted to list images for another user {}",
+                    claims.user_id,
+                    user_id
+                );
+                return Err(StatusCode::FORBIDDEN);
             }
         }
         UserRole::Teacher | UserRole::Admin => {
@@ -283,17 +300,13 @@ pub async fn get_all_images_for_user(
     let page = query.page.unwrap_or(1).max(1);
     let offset = (page - 1) * limit;
 
+    let date_from = parse_date_param("date_from", query.date_from.as_deref())?;
+    let date_to = parse_date_param("date_to", query.date_to.as_deref())?;
+
     // Get images with filtering
     let images = state
         .db
-        .get_images_by_user(
-            user_id,
-            limit,
-            offset,
-            query.tags,
-            query.date_from,
-            query.date_to,
-        )
+        .get_images_by_user(user_id, limit, offset, query.tags, date_from, date_to)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -324,6 +337,9 @@ pub async fn search_images(
     let page = query.page.unwrap_or(1).max(1);
     let offset = (page - 1) * limit;
 
+    let date_from = parse_date_param("date_from", query.date_from.as_deref())?;
+    let date_to = parse_date_param("date_to", query.date_to.as_deref())?;
+
     // Role-based filtering - students can only search their own images
     let user_id = match claims.role {
         UserRole::Student => Some(claims.user_id),
@@ -337,8 +353,8 @@ pub async fn search_images(
             user_id,
             query.session_id,
             query.tags,
-            query.date_from,
-            query.date_to,
+            date_from,
+            date_to,
             limit,
             offset,
         )
@@ -361,5 +377,18 @@ async fn can_access_image(state: &AppState, claims: &Claims, image: &Image) -> b
                 false
             }
         }
+    }
+}
+
+fn parse_date_param(name: &str, value: Option<&str>) -> Result<Option<NaiveDate>, StatusCode> {
+    if let Some(raw) = value {
+        NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+            .map(Some)
+            .map_err(|_| {
+                tracing::warn!("Invalid {} query parameter: {}", name, raw);
+                StatusCode::BAD_REQUEST
+            })
+    } else {
+        Ok(None)
     }
 }

@@ -138,11 +138,7 @@ pub async fn capture_image(
             {
                 Ok(file_info) => file_info,
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to store image file {}: {}",
-                        response.filename,
-                        e
-                    );
+                    tracing::error!("Failed to store image file {}: {}", response.filename, e);
                     return Err(StatusCode::INTERNAL_SERVER_ERROR);
                 }
             };

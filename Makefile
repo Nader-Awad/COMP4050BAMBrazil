@@ -1,10 +1,14 @@
 COMPOSE ?= docker compose
 
-.PHONY: up down build logs ps clean prune
+.PHONY: up down build logs ps clean prune dev
 
 # Bring up the entire stack (frontend, backend, database)
 up:
 	$(COMPOSE) up --build
+
+# Bring up the stack with IA mock mode enabled
+dev:
+	IA_MOCK_MODE=true $(COMPOSE) up --build
 
 # Stop services and remove containers (keeps volumes)
 down:

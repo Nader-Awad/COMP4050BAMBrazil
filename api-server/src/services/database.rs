@@ -714,13 +714,14 @@ impl DatabaseService {
         let created_image = sqlx::query!(
             r#"
             INSERT INTO images (
-                session_id, filename, file_path, content_type, file_size,
+                id, session_id, filename, file_path, content_type, file_size,
                 width, height, metadata, captured_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id, session_id, filename, file_path, content_type, file_size,
                      width, height, metadata, captured_at
             "#,
+            image.id,
             image.session_id,
             image.filename,
             image.file_path,
@@ -866,8 +867,8 @@ impl DatabaseService {
         limit: u64,
         offset: u64,
         tags: Option<String>,
-        date_from: Option<String>,
-        date_to: Option<String>,
+        date_from: Option<NaiveDate>,
+        date_to: Option<NaiveDate>,
     ) -> Result<Vec<Image>, SqlxError> {
         let mut query = r#"
             SELECT i.id, i.session_id, i.filename, i.file_path, i.content_type, i.file_size,
@@ -914,29 +915,24 @@ impl DatabaseService {
         }
 
         if let Some(from_date) = date_from {
-            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(&from_date, "%Y-%m-%d") {
-                let from_datetime = parsed_date
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_local_timezone(Utc)
-                    .unwrap();
-                sql_query = sql_query.bind(
-                    time::OffsetDateTime::from_unix_timestamp(from_datetime.timestamp()).unwrap(),
-                );
-            }
+            let from_datetime = from_date
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query.bind(
+                time::OffsetDateTime::from_unix_timestamp(from_datetime.timestamp()).unwrap(),
+            );
         }
 
         if let Some(to_date) = date_to {
-            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(&to_date, "%Y-%m-%d") {
-                let to_datetime = parsed_date
-                    .and_hms_opt(23, 59, 59)
-                    .unwrap()
-                    .and_local_timezone(Utc)
-                    .unwrap();
-                sql_query = sql_query.bind(
-                    time::OffsetDateTime::from_unix_timestamp(to_datetime.timestamp()).unwrap(),
-                );
-            }
+            let to_datetime = to_date
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query
+                .bind(time::OffsetDateTime::from_unix_timestamp(to_datetime.timestamp()).unwrap());
         }
 
         sql_query = sql_query.bind(limit as i64).bind(offset as i64);
@@ -946,8 +942,8 @@ impl DatabaseService {
         let images = rows
             .into_iter()
             .map(|row| {
-                let metadata: ImageMetadata = serde_json::from_value(row.get("metadata"))
-                    .unwrap_or_default();
+                let metadata: ImageMetadata =
+                    serde_json::from_value(row.get("metadata")).unwrap_or_default();
                 Image {
                     id: row.get("id"),
                     session_id: row.get("session_id"),
@@ -977,8 +973,8 @@ impl DatabaseService {
         user_id: Option<Uuid>,
         session_id: Option<Uuid>,
         tags: Option<String>,
-        date_from: Option<String>,
-        date_to: Option<String>,
+        date_from: Option<NaiveDate>,
+        date_to: Option<NaiveDate>,
         limit: u64,
         offset: u64,
     ) -> Result<Vec<Image>, SqlxError> {
@@ -1044,29 +1040,24 @@ impl DatabaseService {
         }
 
         if let Some(from_date) = date_from {
-            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(&from_date, "%Y-%m-%d") {
-                let from_datetime = parsed_date
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_local_timezone(Utc)
-                    .unwrap();
-                sql_query = sql_query.bind(
-                    time::OffsetDateTime::from_unix_timestamp(from_datetime.timestamp()).unwrap(),
-                );
-            }
+            let from_datetime = from_date
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query.bind(
+                time::OffsetDateTime::from_unix_timestamp(from_datetime.timestamp()).unwrap(),
+            );
         }
 
         if let Some(to_date) = date_to {
-            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(&to_date, "%Y-%m-%d") {
-                let to_datetime = parsed_date
-                    .and_hms_opt(23, 59, 59)
-                    .unwrap()
-                    .and_local_timezone(Utc)
-                    .unwrap();
-                sql_query = sql_query.bind(
-                    time::OffsetDateTime::from_unix_timestamp(to_datetime.timestamp()).unwrap(),
-                );
-            }
+            let to_datetime = to_date
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query
+                .bind(time::OffsetDateTime::from_unix_timestamp(to_datetime.timestamp()).unwrap());
         }
 
         sql_query = sql_query.bind(limit as i64).bind(offset as i64);
@@ -1076,8 +1067,8 @@ impl DatabaseService {
         let images = rows
             .into_iter()
             .map(|row| {
-                let metadata: ImageMetadata = serde_json::from_value(row.get("metadata"))
-                    .unwrap_or_default();
+                let metadata: ImageMetadata =
+                    serde_json::from_value(row.get("metadata")).unwrap_or_default();
                 Image {
                     id: row.get("id"),
                     session_id: row.get("session_id"),
