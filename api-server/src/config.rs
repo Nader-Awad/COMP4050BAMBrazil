@@ -42,6 +42,7 @@ pub struct IAConfig {
     pub base_url: String,
     pub timeout: u64, // in seconds
     pub auth_token: Option<String>,
+    pub mock_mode: bool, // Enable mock mode for development/testing
 }
 
 impl Config {
@@ -97,6 +98,10 @@ impl Config {
                 .unwrap_or_else(|_| "30".to_string())
                 .parse()?,
             auth_token: env::var("IA_AUTH_TOKEN").ok(),
+            mock_mode: env::var("IA_MOCK_MODE")
+                .unwrap_or_else(|_| "false".to_string())
+                .parse()
+                .unwrap_or(false),
         };
 
         Ok(Config {

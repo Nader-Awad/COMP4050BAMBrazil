@@ -153,6 +153,7 @@ MAX_FILE_SIZE=52428800
 # IA System Integration
 IA_BASE_URL=http://192.168.1.100:8080
 IA_TIMEOUT=30
+IA_MOCK_MODE=false
 
 # Logging
 RUST_LOG=info
@@ -166,6 +167,10 @@ The API server communicates with the IA code running on OrangePi through REST en
 - **Microscope Control**: Proxies UI commands (move, focus, magnification)
 - **Object Detection**: Receives AI analysis results for captured images
 - **Auto Tracking**: Controls automated object tracking features
+
+### IA Mock Mode
+
+Set `IA_MOCK_MODE=true` (or run `make dev` from the repo root) to exercise the entire capture pipeline without IA hardware. Mock mode short-circuits the IA client so `capture_image`, `download_image`, session sync, and metadata uploads return deterministic fake responses suitable for local development and automated testing.
 
 ## File Storage
 

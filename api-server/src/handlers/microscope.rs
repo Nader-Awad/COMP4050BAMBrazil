@@ -114,8 +114,75 @@ pub async fn capture_image(
 
     match ia_client.capture_image(&microscope_id, &request).await {
         Ok(response) => {
-            // TODO: Save image metadata to database
-            // TODO: Store image file in file storage
+            // Download the image file from IA system
+            let image_bytes = match ia_client
+                .download_image(&microscope_id, &response.image_id)
+                .await
+            {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to download image {} from IA system: {}",
+                        response.image_id,
+                        e
+                    );
+                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                }
+            };
+
+            // Store image file in file storage
+            let stored_file = match state
+                .file_store
+                .store_file(&response.filename, &image_bytes, request.session_id)
+                .await
+            {
+                Ok(file_info) => file_info,
+                Err(e) => {
+                    tracing::error!("Failed to store image file {}: {}", response.filename, e);
+                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                }
+            };
+
+            // Create Image model for database
+            let image = crate::models::Image {
+                id: response.image_id,
+                session_id: request.session_id,
+                filename: stored_file.filename.clone(),
+                file_path: stored_file.file_path.clone(),
+                content_type: stored_file.content_type.clone(),
+                file_size: stored_file.file_size as i64,
+                width: None,  // Could be extracted from image bytes if needed
+                height: None, // Could be extracted from image bytes if needed
+                metadata: response.metadata.clone(),
+                captured_at: chrono::Utc::now(),
+            };
+
+            // Save image metadata to database
+            if let Err(e) = state.db.create_image(&image).await {
+                tracing::error!(
+                    "Failed to save image metadata to database for image {}: {}",
+                    response.image_id,
+                    e
+                );
+                // Try to clean up the stored file
+                if let Err(cleanup_err) = state.file_store.delete_file(&stored_file.file_path).await
+                {
+                    tracing::warn!(
+                        "Failed to clean up file {} after database error: {}",
+                        stored_file.file_path,
+                        cleanup_err
+                    );
+                }
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+
+            tracing::info!(
+                "Successfully captured and stored image {} for session {} ({})",
+                response.image_id,
+                request.session_id,
+                stored_file.filename
+            );
+
             Ok(Json(ApiResponse::success(response)))
         }
         Err(e) => {

@@ -16,6 +16,7 @@ services:
       FILE_STORAGE_PATH: /data/uploads
       IA_BASE_URL: http://localhost:8080
       IA_TIMEOUT: 30
+      IA_MOCK_MODE: ${IA_MOCK_MODE:-false}
     volumes:
       - uploads_data:/data/uploads
     depends_on:

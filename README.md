@@ -23,6 +23,8 @@ Both services are containerised and can be orchestrated together with Docker Com
    - Starts `db` (PostgreSQL), `api` (Axum server on `http://localhost:3000`), and `frontend` (static Vite bundle served by Nginx on `http://localhost:5173`).
 3. Stop the stack with `make down` when you are done.
 
+If you need to develop without the IA hardware/API online, run `make dev`. It behaves like `make up` but exports `IA_MOCK_MODE=true`, so the backend serves mocked microscope responses end-to-end (image capture, downloads, session sync, etc.).
+
 > **Default logins** (seeded via the initial migration)
 > - `admin@bam.edu` / `admin123`
 > - `teacher@bam.edu` / `teacher123`
@@ -33,6 +35,7 @@ Both services are containerised and can be orchestrated together with Docker Com
 | Command | Description |
 | ------- | ----------- |
 | `make` / `make up` | Build images and start all services defined in `docker-compose.yml`. |
+| `make dev` | Same as `make up`, but runs the stack with `IA_MOCK_MODE=true` for mocked IA responses. |
 | `make down` | Stop containers and remove default networks (volumes are kept). |
 | `make build` | Rebuild images without starting the stack. |
 | `make logs` | Tail logs from all services. |

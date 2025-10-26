@@ -714,13 +714,14 @@ impl DatabaseService {
         let created_image = sqlx::query!(
             r#"
             INSERT INTO images (
-                session_id, filename, file_path, content_type, file_size,
+                id, session_id, filename, file_path, content_type, file_size,
                 width, height, metadata, captured_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id, session_id, filename, file_path, content_type, file_size,
                      width, height, metadata, captured_at
             "#,
+            image.id,
             image.session_id,
             image.filename,
             image.file_path,
@@ -799,7 +800,7 @@ impl DatabaseService {
             r#"
             SELECT id, session_id, filename, file_path, content_type, file_size,
                    width, height, metadata, captured_at
-            FROM images 
+            FROM images
             WHERE session_id = $1
             ORDER BY captured_at DESC
             LIMIT 1
@@ -826,6 +827,270 @@ impl DatabaseService {
                     .with_timezone(&Utc),
             }
         }))
+    }
+
+    pub async fn get_image_by_id(&self, image_id: Uuid) -> Result<Option<Image>, SqlxError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id, session_id, filename, file_path, content_type, file_size,
+                   width, height, metadata, captured_at
+            FROM images
+            WHERE id = $1
+            "#,
+            image_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|row| {
+            let metadata: ImageMetadata = serde_json::from_value(row.metadata).unwrap_or_default();
+            Image {
+                id: row.id,
+                session_id: row.session_id,
+                filename: row.filename,
+                file_path: row.file_path,
+                content_type: row.content_type,
+                file_size: row.file_size,
+                width: row.width,
+                height: row.height,
+                metadata,
+                captured_at: DateTime::from_timestamp(row.captured_at.unix_timestamp(), 0)
+                    .unwrap()
+                    .with_timezone(&Utc),
+            }
+        }))
+    }
+
+    pub async fn get_images_by_user(
+        &self,
+        user_id: Uuid,
+        limit: u64,
+        offset: u64,
+        tags: Option<String>,
+        date_from: Option<NaiveDate>,
+        date_to: Option<NaiveDate>,
+    ) -> Result<Vec<Image>, SqlxError> {
+        let mut query = r#"
+            SELECT i.id, i.session_id, i.filename, i.file_path, i.content_type, i.file_size,
+                   i.width, i.height, i.metadata, i.captured_at
+            FROM images i
+            INNER JOIN sessions s ON i.session_id = s.id
+            WHERE s.user_id = $1
+        "#
+        .to_string();
+
+        let mut param_count = 1;
+        let mut conditions = Vec::new();
+
+        if tags.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND i.metadata::text ILIKE ${}", param_count));
+        }
+
+        if date_from.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND i.captured_at >= ${}", param_count));
+        }
+
+        if date_to.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND i.captured_at <= ${}", param_count));
+        }
+
+        for condition in conditions {
+            query.push_str(&condition);
+        }
+
+        query.push_str(" ORDER BY i.captured_at DESC");
+        param_count += 1;
+        query.push_str(&format!(" LIMIT ${}", param_count));
+        param_count += 1;
+        query.push_str(&format!(" OFFSET ${}", param_count));
+
+        let mut sql_query = sqlx::query(&query);
+        sql_query = sql_query.bind(user_id);
+
+        if let Some(tag_filter) = tags {
+            sql_query = sql_query.bind(format!("%{}%", tag_filter));
+        }
+
+        if let Some(from_date) = date_from {
+            let from_datetime = from_date
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query.bind(
+                time::OffsetDateTime::from_unix_timestamp(from_datetime.timestamp()).unwrap(),
+            );
+        }
+
+        if let Some(to_date) = date_to {
+            let to_datetime = to_date
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query
+                .bind(time::OffsetDateTime::from_unix_timestamp(to_datetime.timestamp()).unwrap());
+        }
+
+        sql_query = sql_query.bind(limit as i64).bind(offset as i64);
+
+        let rows = sql_query.fetch_all(&self.pool).await?;
+
+        let images = rows
+            .into_iter()
+            .map(|row| {
+                let metadata: ImageMetadata =
+                    serde_json::from_value(row.get("metadata")).unwrap_or_default();
+                Image {
+                    id: row.get("id"),
+                    session_id: row.get("session_id"),
+                    filename: row.get("filename"),
+                    file_path: row.get("file_path"),
+                    content_type: row.get("content_type"),
+                    file_size: row.get("file_size"),
+                    width: row.get("width"),
+                    height: row.get("height"),
+                    metadata,
+                    captured_at: DateTime::from_timestamp(
+                        row.get::<time::OffsetDateTime, _>("captured_at")
+                            .unix_timestamp(),
+                        0,
+                    )
+                    .unwrap()
+                    .with_timezone(&Utc),
+                }
+            })
+            .collect();
+
+        Ok(images)
+    }
+
+    pub async fn search_images(
+        &self,
+        user_id: Option<Uuid>,
+        session_id: Option<Uuid>,
+        tags: Option<String>,
+        date_from: Option<NaiveDate>,
+        date_to: Option<NaiveDate>,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Image>, SqlxError> {
+        let mut query = r#"
+            SELECT i.id, i.session_id, i.filename, i.file_path, i.content_type, i.file_size,
+                   i.width, i.height, i.metadata, i.captured_at
+            FROM images i
+            INNER JOIN sessions s ON i.session_id = s.id
+            WHERE 1=1
+        "#
+        .to_string();
+
+        let mut param_count = 0;
+        let mut conditions = Vec::new();
+
+        if user_id.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND s.user_id = ${}", param_count));
+        }
+
+        if session_id.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND i.session_id = ${}", param_count));
+        }
+
+        if tags.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND i.metadata::text ILIKE ${}", param_count));
+        }
+
+        if date_from.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND i.captured_at >= ${}", param_count));
+        }
+
+        if date_to.is_some() {
+            param_count += 1;
+            conditions.push(format!(" AND i.captured_at <= ${}", param_count));
+        }
+
+        for condition in conditions {
+            query.push_str(&condition);
+        }
+
+        query.push_str(" ORDER BY i.captured_at DESC");
+        param_count += 1;
+        query.push_str(&format!(" LIMIT ${}", param_count));
+        param_count += 1;
+        query.push_str(&format!(" OFFSET ${}", param_count));
+
+        let mut sql_query = sqlx::query(&query);
+
+        if let Some(uid) = user_id {
+            sql_query = sql_query.bind(uid);
+        }
+
+        if let Some(sid) = session_id {
+            sql_query = sql_query.bind(sid);
+        }
+
+        if let Some(tag_filter) = tags {
+            sql_query = sql_query.bind(format!("%{}%", tag_filter));
+        }
+
+        if let Some(from_date) = date_from {
+            let from_datetime = from_date
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query.bind(
+                time::OffsetDateTime::from_unix_timestamp(from_datetime.timestamp()).unwrap(),
+            );
+        }
+
+        if let Some(to_date) = date_to {
+            let to_datetime = to_date
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap();
+            sql_query = sql_query
+                .bind(time::OffsetDateTime::from_unix_timestamp(to_datetime.timestamp()).unwrap());
+        }
+
+        sql_query = sql_query.bind(limit as i64).bind(offset as i64);
+
+        let rows = sql_query.fetch_all(&self.pool).await?;
+
+        let images = rows
+            .into_iter()
+            .map(|row| {
+                let metadata: ImageMetadata =
+                    serde_json::from_value(row.get("metadata")).unwrap_or_default();
+                Image {
+                    id: row.get("id"),
+                    session_id: row.get("session_id"),
+                    filename: row.get("filename"),
+                    file_path: row.get("file_path"),
+                    content_type: row.get("content_type"),
+                    file_size: row.get("file_size"),
+                    width: row.get("width"),
+                    height: row.get("height"),
+                    metadata,
+                    captured_at: DateTime::from_timestamp(
+                        row.get::<time::OffsetDateTime, _>("captured_at")
+                            .unix_timestamp(),
+                        0,
+                    )
+                    .unwrap()
+                    .with_timezone(&Utc),
+                }
+            })
+            .collect();
+
+        Ok(images)
     }
 
     pub async fn check_booking_conflicts(
