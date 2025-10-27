@@ -346,9 +346,10 @@ export const BookingsAPI = {
 
   /**
    * Batch fetch for a visible week: call the day endpoint for each date.
+   * NOTE: accepts AbortSignal and disables retries for aborted requests.
    */
-  async listRange(params: { dates: string[]; bioscopeId: string }): Promise<Booking[]> {
-    const { dates, bioscopeId } = params;
+  async listRange(params: { dates: string[]; bioscopeId: string; signal?: AbortSignal }): Promise<Booking[]> {
+    const { dates, bioscopeId, signal } = params;
     if (!Array.isArray(dates) || dates.length === 0 || !bioscopeId) {
       throw new ApiError("BookingsAPI.listRange requires { dates[], bioscopeId }");
     }
@@ -359,8 +360,12 @@ export const BookingsAPI = {
       p.set("limit", "500");
       return `/api/bookings?${p.toString()}`;
     });
-    const results = await Promise.allSettled(paths.map((p) => request<BookingDto[]>(p, "GET")));
-    const okArrays = results.map((r) => (r.status === "fulfilled" ? (r as PromiseFulfilledResult<BookingDto[]>).value : [])).flat();
+    const results = await Promise.allSettled(
+      paths.map((p) => request<BookingDto[]>(p, "GET", undefined, { signal, retry: 0 }))
+    );
+    const okArrays = results
+      .map((r) => (r.status === "fulfilled" ? (r as PromiseFulfilledResult<BookingDto[]>).value : []))
+      .flat();
     return okArrays.map(toBooking);
   },
 

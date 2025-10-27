@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"; 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"; 
 import { Filter } from "lucide-react";
 import { Card, CardContent } from "@components/ui/card";
 import { Label } from "@components/ui/label";
@@ -71,6 +71,7 @@ function ymd(d: Date) {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
 function daysBetween(start: Date, end: Date) {
   const out: string[] = [];
   const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -167,11 +168,11 @@ export default function BioscopeBookingUI() {
   const nav = useCalendarNav({
     initialMode: "week",
     weekStartsOn: 1,
-    onRangeChange: () => {
+    onRangeChange: ({ start, end }) => {
       void loadBookings({
         showBanner: false,
-        start: startOfDayLocal(nav.visibleStart),
-        end: startOfDayLocal(nav.visibleEnd),
+        start: startOfDayLocal(start),
+        end: startOfDayLocal(end),
         bioscopeId: selectedBioscope,
       });
     },
@@ -217,22 +218,14 @@ export default function BioscopeBookingUI() {
     return getCalendarConflicts(visible);
   }, [nav.mode, dayBookings, viewBookings]);
 
-  const occupied = useMemo(() => {
-    const taken = new Set<string>();
-    for (const b of dayBookings) {
-      if (b.bioscopeId !== selectedBioscope) continue;
-      if (b.status === "rejected") continue;
-      for (let s = b.slotStart; s < b.slotEnd; s += SLOT_MINUTES) {
-        const e = Math.min(s + SLOT_MINUTES, b.slotEnd);
-        taken.add(`${s}-${e}`);
-      }
-    }
-    return taken;
-  }, [dayBookings, selectedBioscope]);
-
-  const openSlots = useMemo(
-    () => slotsForDay.filter((s) => !occupied.has(`${s.start}-${s.end}`)),
-    [slotsForDay, occupied]
+  // derive bands for calendar visualization
+  const approvedBands = useMemo(
+    () => dayBookings.filter(b => b.status === "approved").map(b => ({ start: b.slotStart, end: b.slotEnd })),
+    [dayBookings]
+  );
+  const pendingBands = useMemo(
+    () => dayBookings.filter(b => b.status === "pending").map(b => ({ start: b.slotStart, end: b.slotEnd })),
+    [dayBookings]
   );
 
   useEffect(() => {
@@ -255,6 +248,10 @@ export default function BioscopeBookingUI() {
   const [draft, setDraft] = useState<BookingDraft>({ title: "", groupName: "", attendees: 1, slot: "" });
   const [isGroup, setIsGroup] = useState(false);
 
+  // guards to prevent stale application of results
+  const activeKeyRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
   const loadBookings = useCallback(
     async (opts?: { showBanner?: boolean; start?: Date; end?: Date; bioscopeId?: string }) => {
       const showBanner = opts?.showBanner ?? true;
@@ -263,21 +260,48 @@ export default function BioscopeBookingUI() {
       const bioscopeId = opts?.bioscopeId ?? selectedBioscope;
       const dates = daysBetween(start, end);
       const cacheKey = `${bioscopeId}|${dates.join(",")}`;
+      activeKeyRef.current = cacheKey;
+
+      // cancel any in-flight request
+      if (abortRef.current) abortRef.current.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       if (showBanner) setIsLoading(true);
       setError(null);
       try {
-        if (RANGE_CACHE.has(cacheKey)) setBookings(RANGE_CACHE.get(cacheKey)!);
-        else {
-          const fetched = await BookingsAPI.listRange({ dates, bioscopeId });
-          const deduped = dedupeById(fetched);
-          RANGE_CACHE.set(cacheKey, deduped);
+        if (RANGE_CACHE.has(cacheKey)) {
+          if (activeKeyRef.current === cacheKey) {
+            setBookings(RANGE_CACHE.get(cacheKey)!);
+          }
+          return;
+        }
+        const fetched = await BookingsAPI.listRange({ dates, bioscopeId, signal: controller.signal });
+        if (controller.signal.aborted) {
+          if (abortRef.current === controller) abortRef.current = null;
+          return;
+        }
+        const deduped = dedupeById(fetched);
+        RANGE_CACHE.set(cacheKey, deduped);
+
+        if (activeKeyRef.current === cacheKey) {
           setBookings(deduped);
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === "AbortError") {
+          // clear ref after abort
+          if (abortRef.current === controller) abortRef.current = null;
+          return;
+        }
         const message = err instanceof ApiError ? err.message : "Failed to load bookings.";
-        setError(message);
+        if (activeKeyRef.current === cacheKey) {
+          setError(message);
+        }
       } finally {
-        if (showBanner) setIsLoading(false);
+        if (showBanner && activeKeyRef.current === cacheKey) {
+          setIsLoading(false);
+        }
+        if (abortRef.current === controller) abortRef.current = null;
       }
     },
     [viewStart, viewEnd, selectedBioscope]
@@ -285,12 +309,19 @@ export default function BioscopeBookingUI() {
 
   useEffect(() => {
     void loadBookings({ showBanner: true, start: viewStart, end: viewEnd, bioscopeId: selectedBioscope });
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+    };
   }, []);
+
   useEffect(() => {
     void loadBookings({ showBanner: false, start: viewStart, end: viewEnd, bioscopeId: selectedBioscope });
-  }, [selectedBioscope, viewStart, viewEnd, loadBookings]);
+  }, [selectedBioscope]);
 
-  /* Clear cache when switching accounts (avoid stale) */
+  /* Clear cache when switching accounts */
   useEffect(() => {
     RANGE_CACHE.clear();
   }, [currentUser?.id]);
@@ -535,11 +566,15 @@ export default function BioscopeBookingUI() {
           <TabsContent value="student" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <BookingCalendar
-                openSlots={openSlots}
+                // render all slots so conflicts can be visualized
+                openSlots={slotsForDay}
                 slotMinutes={SLOT_MINUTES}
                 selectedSlot={draft.slot}
                 onSelectSlot={(slotKey) => setDraft((d) => ({ ...d, slot: slotKey }))}
                 fmtTime={fmtTime}
+                conflictBands={approvedBands}
+                pendingBands={pendingBands}
+                disableConflictedSelection
               />
               <BookingForm
                 draft={draft}
