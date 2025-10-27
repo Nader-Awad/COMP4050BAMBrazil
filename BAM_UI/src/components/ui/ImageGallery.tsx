@@ -1,19 +1,5 @@
 import React, { useState, useCallback, useEffect, type KeyboardEvent } from "react";
-
-export interface GalleryImage {
-  src: string;
-  alt?: string;
-  caption?: string;
-  id?: string;
-}
-
-export interface ImageGalleryProps {
-  images: GalleryImage[];
-  initialIndex?: number;
-  onIndexChange?: (index: number) => void;
-  showThumbnails?: boolean;
-  ariaLabel?: string;
-}
+import type { GalleryImage, ImageGalleryProps } from "@/types/images";
 
 export default function ImageGallery({
   images,
@@ -21,7 +7,7 @@ export default function ImageGallery({
   onIndexChange,
   showThumbnails = true,
   ariaLabel = "Image gallery",
-}: ImageGalleryProps) {
+}: Readonly<ImageGalleryProps>) {
   const [index, setIndex] = useState(Math.min(initialIndex, Math.max(0, images.length - 1)));
 
   useEffect(() => {
@@ -42,8 +28,12 @@ export default function ImageGallery({
     <div className="w-full" aria-label={ariaLabel}>
       <div
         className="relative flex items-center justify-center bg-gray-50 rounded-md overflow-hidden"
+        role="region"
+        aria-label={`${ariaLabel} viewport`}
         tabIndex={0}
         onKeyDown={onKey}
+        onClick={() => {}}
+        onTouchStart={() => {}}
       >
         <button
           aria-label="Previous image"
