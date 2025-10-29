@@ -47,7 +47,10 @@ pub async fn auth_middleware(
 
     // Validate and decode JWT token
     let claims = validate_jwt_token(&token, &state.config.auth.jwt_secret)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| {
+            tracing::warn!("Unauthorized: Invalid or expired token");
+            StatusCode::UNAUTHORIZED
+        })?;
 
     // Add user information to request extensions
     request.extensions_mut().insert(claims);
