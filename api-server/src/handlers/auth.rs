@@ -10,6 +10,8 @@ use crate::{
     models::{ApiResponse, User, UserRole},
     services::database::DatabaseService,
     AppError, AppState,
+    services::database::DatabaseService,
+    AppError, AppState,
 };
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -73,6 +75,7 @@ pub async fn login(
     }
 
     // TODO: Replace with actual database lookup
+    let user = match authenticate_user(state.db.as_ref(), &request.email, &request.password).await {
     let user = match authenticate_user(state.db.as_ref(), &request.email, &request.password).await {
         Ok(user) => user,
         Err(AuthError::InvalidCredentials) => {
