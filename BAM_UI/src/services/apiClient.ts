@@ -360,9 +360,22 @@ export const BookingsAPI = {
       p.set("limit", "500");
       return `/api/bookings?${p.toString()}`;
     });
+    const isAbortError = (reason: unknown) => {
+      if (!reason) return false;
+      if (typeof reason === "string") return reason === "AbortError";
+      return (reason as { name?: string }).name === "AbortError";
+    };
     const results = await Promise.allSettled(
       paths.map((p) => request<BookingDto[]>(p, "GET", undefined, { signal, retry: 0 }))
     );
+    const firstError = results.find(
+      (r) =>
+        r.status === "rejected" &&
+        !isAbortError((r as PromiseRejectedResult).reason)
+    ) as PromiseRejectedResult | undefined;
+    if (firstError) {
+      throw firstError.reason;
+    }
     const okArrays = results
       .map((r) => (r.status === "fulfilled" ? (r as PromiseFulfilledResult<BookingDto[]>).value : []))
       .flat();
