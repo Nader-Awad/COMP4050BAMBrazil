@@ -23,7 +23,9 @@ Both services are containerised and can be orchestrated together with Docker Com
    - Starts `db` (PostgreSQL), `api` (Axum server on `http://localhost:3000`), and `frontend` (static Vite bundle served by Nginx on `http://localhost:5173`).
 3. Stop the stack with `make down` when you are done.
 
-If you need to develop without the IA hardware/API online, run `make dev`. It behaves like `make up` but exports `IA_MOCK_MODE=true`, so the backend serves mocked microscope responses end-to-end (image capture, downloads, session sync, etc.).
+For backend-focused development, run `make dev`. It starts only the `api` and `db` containers with `IA_MOCK_MODE=true`, letting you run the React app locally via `npm run dev` without pulling in the IA service.
+
+To include the IA service, place their source in `IA/`, provide an `IA/.env`, and run `make up-ia`. This composes the BAM stack with the IA container while reusing the shared PostgreSQL database.
 
 > **Default logins** (seeded via the initial migration)
 > - `admin@bam.edu` / `admin123`
@@ -35,9 +37,13 @@ If you need to develop without the IA hardware/API online, run `make dev`. It be
 | Command | Description |
 | ------- | ----------- |
 | `make` / `make up` | Build images and start all services defined in `docker-compose.yml`. |
-| `make dev` | Same as `make up`, but runs the stack with `IA_MOCK_MODE=true` for mocked IA responses. |
+| `make dev` | Start `api` and `db` only with `IA_MOCK_MODE=true` for local frontend development. |
 | `make down` | Stop containers and remove default networks (volumes are kept). |
 | `make build` | Rebuild images without starting the stack. |
+| `make up-ia` | Start the full BAM stack plus the IA service using `docker-compose.ia.yml`. |
+| `make build-ia` | Build images for the BAM + IA stack without starting containers. |
+| `make logs-ia` | Tail logs from the combined BAM + IA services. |
+| `make down-ia` | Stop the combined BAM + IA stack. |
 | `make logs` | Tail logs from all services. |
 | `make ps` | Show container status. |
 | `make prune` | Stop the stack then run `docker system prune -af --volumes` to reclaim space. |
@@ -62,3 +68,10 @@ If you prefer not to use Docker:
 Tokens are stored in `localStorage`; the frontend fetch client attaches them as bearer tokens and automatically refreshes when needed.
 
 Refer to `AGENTS.md` for contributor guidelines, coding standards, and testing expectations.
+
+## IA Integration
+
+- IA collaborators should place their project (including `Dockerfile` and supporting assets) inside the `IA/` directory. See `IA/README.md` for expectations.
+- `docker-compose.ia.yml` layers the IA container on top of the core stack while reusing the shared PostgreSQL service.
+- Use `make up-ia`/`make down-ia` to run or stop the combined environment, and `make build-ia` when you only need to rebuild images.
+- The standard BAM development flow (`make dev` + `npm run dev`) remains available and does not require the IA codebase.

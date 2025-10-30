@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  ia:
+    build:
+      context: ./IA
+      dockerfile: Dockerfile
+    env_file:
+      - ./IA/.env
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/bam
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "27010:27010"
+    restart: unless-stopped
